@@ -20,3 +20,12 @@ function withoutJquery(){
   temp.remove();
    console.timeEnd('time2');
 }
+
+function copyToClipBoard(text){
+    var temp = $("<input>");
+    $("body").append(temp);
+    temp.val(text).select();
+    document.execCommand("copy");
+    temp.remove();
+}
+
