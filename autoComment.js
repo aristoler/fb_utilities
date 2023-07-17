@@ -29,3 +29,13 @@ function copyToClipBoard(text){
     temp.remove();
 }
 
+function copyToClipBoard2(text){
+  var temp=document.createElement('input');
+  temp.type='input';
+  temp.setAttribute('value',text);
+  document.body.appendChild(temp);
+  temp.select();
+  document.execCommand("copy");
+  temp.remove();
+}
+
