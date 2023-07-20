@@ -1,18 +1,3 @@
-// ==UserScript==
-// @name         FBWanderer
-// @namespace    http://tampermonkey.net/
-// @version      0.2.0
-// @description  try to take over the world!
-// @author       You
-// @match        *.facebook.com/*
-// @icon         data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==
-// @connect      google.com
-// @connect      googleusercontent.com
-// @grant        GM_xmlhttpRequest
-// @grant        GM_download
-// ==/UserScript==
-
-//channel utilies
 function createChannel(name,role){
 	const channel = new BroadcastChannel(name);
 
@@ -209,23 +194,7 @@ function slave(id,taskStr){
     })();
 }
 
-(function() {
-    'use strict';
-    // /.*facebook\.com\/profile\.php\?id=(\d{15})/
-    //https://www.google.com.hk/?id=100093579038987
-    // const re = /.*facebook\.com\/profile\.php\?id=(?<id>\d{15}).*(?<role>role=slave)?.*/
-    const reMaster = /.*facebook\.com\/profile\.php\?id=(?<id>\d{15})/;
-    const reSlave = /.*facebook\.com\/profile\.php\?id=(?<id>\d{15}).*(role=(?<role>slave)).*(task=(?<task>[^&]+)).*/;
-    const str = window.location.href;
-    const isMaster = str.match(reMaster);
-    const isSlave = str.match(reSlave);
-
-    //master url includes slave's url, slave first
-    if (null !== isSlave){
-        //in slave page
-        slave(isSlave.groups.id,decodeURIComponent(isSlave.groups.task));
-    }else if(null !== isMaster){
-        //in master page, run with facebook id
-        master(isMaster.groups.id);
-    }
-})();
+module.exports = {
+    master,
+    slave
+}
