@@ -194,7 +194,21 @@ function slave(id,taskStr){
     })();
 }
 
-module.exports = {
-    master,
-    slave
+function main(){
+    const reMaster = /.*facebook\.com\/profile\.php\?id=(?<id>\d{15})/;
+    const reSlave = /.*facebook\.com\/profile\.php\?id=(?<id>\d{15}).*(role=(?<role>slave)).*(task=(?<task>[^&]+)).*/;
+    const str = window.location.href;
+    const isMaster = str.match(reMaster);
+    const isSlave = str.match(reSlave);
+
+    //master url includes slave's url, slave first
+    if (null !== isSlave){
+        //in slave page
+        slave(isSlave.groups.id,decodeURIComponent(isSlave.groups.task));
+    }else if(null !== isMaster){
+        //in master page, run with facebook id
+        master(isMaster.groups.id);
+    }
 }
+
+module.exports = main
