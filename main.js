@@ -79,7 +79,7 @@ function sendMsg(channel,msg,data) {
 	});
 }
 
-var base_url = 'https://script.google.com/macros/s/AKfycbyjXoqKCGwWown4siH5ltJaxtIt_xCHcCCscyTLtHazvzthCPm5pV2k9Z-x8cqKWZ1e/exec';
+var base_url = 'https://script.google.com/macros/s/AKfycbygYq3dV64EBKCTn1Mbh91vXwfXQZ0WFBgv9-8E98GMBNrmSR354ktt9KrKacwMyv8N/exec';
 
 function master(id){
 	//create channel at init
