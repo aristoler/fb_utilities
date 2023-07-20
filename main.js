@@ -211,6 +211,6 @@ function main(){
     }
 }
 console.log('version 0.0.3');
-// main();
+main();
 
-window.main = main;
+// window.main = main;
