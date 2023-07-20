@@ -212,3 +212,5 @@ function main(){
 }
 console.log('version 0.0.3');
 // main();
+
+window.main = main;
