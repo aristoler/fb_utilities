@@ -209,7 +209,5 @@ function main(){
         //in master page, run with facebook id
         master(isMaster.groups.id);
     }
-   console.log('test');
+   console.log('test11');
 }
-
-module.exports = main
