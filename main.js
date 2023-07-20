@@ -1,3 +1,4 @@
+let version = '0.0.3';
 function createChannel(name,role){
 	const channel = new BroadcastChannel(name);
 
@@ -210,7 +211,7 @@ function main(){
         master(isMaster.groups.id);
     }
 }
-console.log('version 0.0.3');
-main();
 
-// window.main = main;
+console.log(`FBWanderer version ${version}`);
+
+main();
