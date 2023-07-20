@@ -209,6 +209,7 @@ function main(){
         //in master page, run with facebook id
         master(isMaster.groups.id);
     }
+   console.log('test');
 }
 
 module.exports = main
