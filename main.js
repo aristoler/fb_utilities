@@ -211,3 +211,5 @@ function main(){
     }
    console.log('test11');
 }
+
+main();
