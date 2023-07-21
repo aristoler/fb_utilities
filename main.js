@@ -145,8 +145,7 @@ function master(id){
                                 url = `${action.task.url}?id=${fbid}&role=slave&task=${encodeURIComponent(action.task.origin)}`;
                             }
                             console.log(url);
-                            //&id=${fbid}&role=slave&task=${action.task.origin}
-                            window.open(`${url}`,'_blank');
+                            window.open(`${url}`,'action.task.origin');
                         }
                         break;
                     default:
