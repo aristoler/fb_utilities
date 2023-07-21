@@ -137,15 +137,11 @@ function master(id){
                     case "start_watch":
                         if(!(action.task.origin in taskMapChannel))
                         {
-                            var url;
-                            if (action.task.url.indexOf('?')>-1)
-                            {
-                                url = `${action.task.url}&id=${fbid}&role=slave&task=${encodeURIComponent(action.task.origin)}`;
-                            }else{
-                                url = `${action.task.url}?id=${fbid}&role=slave&task=${encodeURIComponent(action.task.origin)}`;
-                            }
-                            console.log(url);
-                            window.open(`${url}`,'action.task.origin');
+                            console.log(`open ${url}`);
+                            window.open(`${url}`,JSON.stringify({
+                                fbid,
+                                action:action.action
+                            }));
                         }
                         break;
                     default:
@@ -161,23 +157,17 @@ function master(id){
 }
 
 //slave page
-function slave(id,taskStr){
+function slave(id,action){
 	//create channel at init
     const fbid = id;
 	const channel = createChannel('zyc','slave');
 	window.channel = channel;
 	window.sendMsg = sendMsg;
-    let s = taskStr.split("|");
-    const task = {
-     name:s[0],
-     url:s[1],
-     start:s[2],
-     end:s[3]
-    }
-    window.taskStr = taskStr;
+
+    const task = action.task;
     window.task = task;
     console.log(task);
-    sendMsg(channel,"task_started",{task:taskStr});
+    sendMsg(channel,"task_started",{task:task.origin});
 	//do routine
     (function routine() {
         //register message handler
@@ -193,21 +183,32 @@ function slave(id,taskStr){
 
     })();
 }
+//orphan page
+function orphan(){
+
+
+}
 
 function main(){
     const reMaster = /.*facebook\.com\/profile\.php\?id=(?<id>\d{15})/;
-    const reSlave = /.*facebook\.com\/profile\.php\?id=(?<id>\d{15}).*(role=(?<role>slave)).*(task=(?<task>[^&]+)).*/;
     const str = window.location.href;
     const isMaster = str.match(reMaster);
+
+    const reSlave = /.*facebook\.com.*/;
     const isSlave = str.match(reSlave);
 
-    //master url includes slave's url, slave first
-    if (null !== isSlave){
-        //in slave page
-        slave(isSlave.groups.id,decodeURIComponent(isSlave.groups.task));
-    }else if(null !== isMaster){
+    //all facebook pages otherwise master page are slaves
+    if(null !== isMaster){
         //in master page, run with facebook id
         master(isMaster.groups.id);
+    }else if (null !== isSlave){
+        //in slave page
+        if('' !== window.name){
+            let mission = JSON.parse(window.name);
+            slave(mission.id,mission.action);
+        }else{
+            orphan();
+        }
     }
 }
 
