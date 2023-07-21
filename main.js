@@ -69,6 +69,32 @@ function createChannel(name,role){
 	});
 	return channel;
 }
+
+function initNode(role){
+
+    function createId(namespace){
+        const key = `node-${namespace}`;
+        let id = + localStorage.getItem(key);
+        if (!id || id >100) {
+            id = 0;
+        }
+        id++;
+        localStorage.setItem(key,id.toString());
+        return id;
+    }
+
+    const node = {};
+    node.role = role;
+    node.status = 'status';
+    node.channel = new BroadcastChannel('zzyycc');
+    node.id = createId('zzyycc');
+    node.neighbours = new Set();
+
+
+    return node;
+}
+
+
 //channel utilies
 function sendMsg(channel,msg,data) {
 	channel.postMessage({
@@ -86,8 +112,6 @@ function master(id){
     const fbid = id;
 	const channel = createChannel('zyc','master');
     let intervalId = null
-	window.channel = channel;
-	window.sendMsg = sendMsg;
     // if(channel.listeners.size === 0){
     // //create tab
     //    window.open('https://www.google.com?abc','_blank');
@@ -116,7 +140,6 @@ function master(id){
         });
     });
     //routine
-    window.taskMapChannel = taskMapChannel;
     function routine(channel) {
         console.log('makeing request');
         GM_xmlhttpRequest({
@@ -137,10 +160,10 @@ function master(id){
                     case "start_watch":
                         if(!(action.task.origin in taskMapChannel))
                         {
-                            console.log(`open ${url}`);
-                            window.open(`${url}`,JSON.stringify({
+                            console.log(`open ${action.task.url}`);
+                            window.open(`${action.task.url}`,JSON.stringify({
                                 fbid,
-                                action:action.action
+                                action:action
                             }));
                         }
                         break;
@@ -161,11 +184,8 @@ function slave(id,action){
 	//create channel at init
     const fbid = id;
 	const channel = createChannel('zyc','slave');
-	window.channel = channel;
-	window.sendMsg = sendMsg;
 
     const task = action.task;
-    window.task = task;
     console.log(task);
     sendMsg(channel,"task_started",{task:task.origin});
 	//do routine
