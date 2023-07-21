@@ -1,147 +1,189 @@
+
 let version = '0.0.3';
-function createChannel(name,role){
-	const channel = new BroadcastChannel(name);
+const ALL_ID = -1;
 
-    function createId(name){
-        const key = `channel-${name}`;
-        let id = + localStorage.getItem(key);
-        if (!id || id >100) {
-            id = 0;
+function createNode(role,fbid){
+
+    const namespace = 'zzyycc';
+    const node = {}; //create new object
+
+    node.fbid = fbid;
+    node.role = role;
+    node.id = Date.now();//fb 会自动清除未知localstorage
+    node.birthtime = Date.now(); //↑ exposed to others
+
+    node.status = 'init';
+    node.channel = new BroadcastChannel(namespace);
+    node.masterid = role === 'master' ? node.id : -1;
+    node.neighbours = new Set(); //↑ inner info
+
+    //msg data structure
+    // let package = {
+    //     fbid,
+    //     role,
+    //     fromid,
+    //     birthtime, ↑ source node info
+    //     toid,
+    //     msg,//syn,ack,fin,
+    //     payload:{}
+    //     timestamp,
+    // }
+
+    //封装消息发送接口
+    node.sendMsgTo = (function () {
+        return function(toid,msg,payload){
+            console.log(`[channel]:${node.role} id ${node.id}-->${ALL_ID === toid ? 'brocast':'private'}  msg ${msg}`);
+            node.channel.postMessage({
+                role:node.role,
+                fromid:node.id,
+                birthtime:node.birthtime,//↑消息宿主相关
+                toid: toid,
+                msg:msg,
+                msgtime:Date.now(),
+                payload:payload//↑消息相关
+            });
         }
-        id++;
-        localStorage.setItem(key,id.toString());
-        return id;
-    }
+    })();
 
-	channel.id = createId(name);
-    channel.role = role;
-    channel.status = 'init';
-    console.log(`${channel.role} id ${channel.id}`);
-	channel.listeners = new Set();
-    //trigger syn
-    console.log(`${channel.role} id ${channel.id} brocasting syn`);
-	sendMsg(channel,'syn',{});
+    //封装消息监听接口
+    node.listenMsg = (function(){
+        return function(msg,cb){
+            node.channel.addEventListener('message',evt=>{
+                if((-1 === evt.data.toid || node.id === evt.data.toid)
+                    && (evt.data.msg === msg)){
+                    console.log(`[channel]:${ALL_ID === evt.data.toid ? 'brocast':'private'} msg ${msg}<--${evt.data.role} id ${evt.data.fromid}`);
+                    cb(evt.data);
+                }
+            });
+        };
+    })();
 
-    //status ready sometime after handshake
-    setTimeout(()=>{
-                   channel.status = 'ready';
-                   console.log(`${channel.role} id ${channel.id} status ready`);
-                   window.dispatchEvent(new Event('pageready'));
-                   },1000);
 
-    //trigger fin
-	window.addEventListener('unload',()=>{
-        console.log(`${channel.role} id ${channel.id} brocasting fin`);
-		sendMsg(channel,'fin',{});
-	});
-	channel.addEventListener('message',e =>{
-		if(e.data.msg === 'syn'){
-            console.log(`syn from ${e.data.role} id ${e.data.id}`);
-            if(channel.role === 'master'){
-                if(e.data.role !== 'master'){
-                    channel.listeners.add(e.data.id);
-                }else{
-                    console.log(`syn from ${e.data.role} id ${e.data.id}, conflicted`);
+    //封装指令注册接口
+    node.directiveHandlers = {}
+    node.onDirective = (function(){
+        return function(directive,cb) {
+            //每条指令函数唯一
+            node.directiveHandlers[directive] = cb;
+        };
+    })();
+
+    // 监听指令消息
+    node.listenMsg('directive',function(remoteMsg){
+        //执行指令处理函数
+        console.log(`[channel]:${ALL_ID === remoteMsg.toid ? 'brocast':'private'} directive ${remoteMsg.payload.name}<--${remoteMsg.role} id ${remoteMsg.fromid}`);
+        if(remoteMsg.payload.name in node.directiveHandlers){
+            node.directiveHandlers[remoteMsg.payload.name](node);
+        }
+    });
+
+    //封装指令发送接口
+    node.sendDirective = (function(){
+        return function(toid,directive) {
+            if(toid === node.id)
+            {
+                //通一进程直接调用,channel不能给自己发消息
+                if(directive.name in node.directiveHandlers){
+                    node.directiveHandlers[directive.name](node,directive);
                 }
             }else{
-     			channel.listeners.add(e.data.id);
+                node.sendMsgTo(toid,'directive',directive);
             }
-            //trigger ack
-            console.log(`${channel.role} id ${channel.id} brocasting ack`);
-            sendMsg(channel,'ack',{});
-		}
-		else if(e.data.msg === 'ack') {
-            console.log(`ack from ${e.data.role} id ${e.data.id}`);
-            channel.listeners.add(e.data.id);
-            if(channel.role ==='master' && e.data.role === 'master'){
-                //the first master is master,change itself as slave
-                channel.role = 'slave';
-                console.log(`id ${channel.id} change from master to slave`);
-                //trigger syn
-                console.log(`${channel.role} id ${channel.id} brocasting syn`);
-	            sendMsg(channel,'syn',{});
-            }
-		}
-		else if(e.data.msg === 'fin') {
-            console.log(`fin from ${e.data.role} id ${e.data.id}`);
-			channel.listeners.delete(e.data.id);
-		}
+        };
+    })();
+
+    //广播握手、挥手消息
+    //trigger syn
+	node.sendMsgTo(ALL_ID,'syn',{})
+
+     //trigger fin
+     window.addEventListener('unload',()=>{
+		node.sendMsgTo(ALL_ID,'fin',{})
 	});
-	return channel;
-}
 
-function initNode(role){
-
-    function createId(namespace){
-        const key = `node-${namespace}`;
-        let id = + localStorage.getItem(key);
-        if (!id || id >100) {
-            id = 0;
+    //master pk
+    function masterPK(node,remoteMsg){
+        if(node.role ==='master' && remoteMsg.role === 'master')
+        {
+            console.log(`[--log--]:${node.role} id ${node.id} pk master with remote id ${remoteMsg.fromid}`);
+            if(node.birthtime > remoteMsg.birthtime){
+                //the first master is master,change itself as slave
+                node.role = 'slave';
+                node.masterid = remoteMsg.fromid;
+                console.log(`[--log--]:this node id ${node.id} losed, changed from master to slave`);
+            }else{
+                console.log(`[--log--]:${node.role} id ${node.id} outwins the master status`);
+            }
         }
-        id++;
-        localStorage.setItem(key,id.toString());
-        return id;
     }
 
-    const node = {};
-    node.role = role;
-    node.status = 'status';
-    node.channel = new BroadcastChannel('zzyycc');
-    node.id = createId('zzyycc');
-    node.neighbours = new Set();
+    //监听握手、挥手消息
+    //listen syn
+    node.listenMsg('syn',function(remoteMsg){
+        node.neighbours.add(remoteMsg.fromid);
+        //master pk
+        masterPK(node,remoteMsg);
+        //trigger ack
+        node.sendMsgTo(ALL_ID,'ack',{});
+    });
+
+    //listen ack
+    node.listenMsg('ack',function(remoteMsg){
+        node.neighbours.add(remoteMsg.fromid);
+        //master pk
+        masterPK(node,remoteMsg);
+    });
+
+    //listen fin
+    node.listenMsg('fin',function(remoteMsg){
+        node.neighbours.delete(remoteMsg.fromid);
+    });
+
+
+    //status ready sometime after handshake
+    node.onReady = (function(){
+        return function(cb){
+            setTimeout(()=>{
+                console.log(`[--log--]:${node.role} id ${node.id} status ready`);
+                node.status = 'ready';
+                console.log(node);
+                cb(node);
+            },1000);
+        }
+    })();
+
+     //封装定时任务接口
+     node.runInterval = (function(){
+        return function(interval,cb){
+             console.log(`[--log--]:${node.role} id ${node.id} starting interval task`);
+             return setInterval(()=>{cb(node)}, interval);
+        };
+    })();
+
+    //封装延时任务接口
+    node.runDelay = (function(){
+        return function(dely,cb){
+             console.log(`[--log--]:${node.role} id ${node.id} starting interval task`);
+             return setTimeout(()=>{cb(node)}, dely);
+        };
+    })();
 
 
     return node;
 }
 
 
-//channel utilies
-function sendMsg(channel,msg,data) {
-	channel.postMessage({
-		id:channel.id,
-        role:channel.role,
-		msg,
-        data
-	});
-}
 
 var base_url = 'https://script.google.com/macros/s/AKfycbygYq3dV64EBKCTn1Mbh91vXwfXQZ0WFBgv9-8E98GMBNrmSR354ktt9KrKacwMyv8N/exec';
 
-function master(id){
+function master(fbid){
 	//create channel at init
-    const fbid = id;
-	const channel = createChannel('zyc','master');
-    let intervalId = null
-    // if(channel.listeners.size === 0){
-    // //create tab
-    //    window.open('https://www.google.com?abc','_blank');
-    // }else{
-    // 	channel.postMessage({
-    // 	  id:channel.id,
-    // 	  msg:'hello'
-    // 	});
-    // }
+    let node = createNode('master',fbid);
+
+
     let taskMapChannel = {};
-    //pageready
-	window.addEventListener('pageready',()=>{
-        console.log(`${channel.role} id ${channel.id} running routine`);
-        //timer handler
-        intervalId = setInterval(routine, 5000);
-        //event handler
-        channel.addEventListener('message',e=>{
-            switch(e.data.msg)
-            {
-                case "task_started":
-                    taskMapChannel[e.data.data.task] = e.data.id;
-                    break;
-                default:
-                    break;
-            }
-        });
-    });
-    //routine
-    function routine(channel) {
-        console.log('makeing request');
+    let fetchDirectives = function (node) {
+        console.log(`[--log--]:${node.role} id ${node.id} requesting /?api=fetchActions&id=${fbid}`);
         GM_xmlhttpRequest({
             method: "GET",
             url: `${base_url}?api=fetchActions&id=${fbid}`,
@@ -150,61 +192,93 @@ function master(id){
             },
             onload: function(response) {
                 if (response.status !== 200) {
-                    console.log(`${channel.role} id ${channel} get res err ${response.status}`);
+                    console.log(`[--log--]:${node.role} id ${node.id} get res err ${response.status}`);
                     return
                 }
                 var ret = JSON.parse(response.responseText);
+                console.log(`[--log--]:${node.role} id ${node.id} recv from /?api=fetchActions&id=${fbid}`);
                 console.log(ret);
                 ret.actions.forEach(action=>{
-                switch(action.action) {
-                    case "start_watch":
-                        if(!(action.task.origin in taskMapChannel))
-                        {
-                            console.log(`open ${action.task.url}`);
-                            window.open(`${action.task.url}`,JSON.stringify({
-                                fbid,
-                                action:action
-                            }));
-                        }
-                        break;
-                    default:
-                        break;
-                    }//end of switch
+                    node.sendDirective(node.id,{
+                    name:action.action,
+                    ctx:action.task
+                    });
                 });//end of forEach
-
             }//end of onload
         });
-
-
     }
+
+    //node ready
+    node.onReady(function(node){
+
+        //Begin:指令驱动的任务
+        //directive ={
+        // name,
+        // ctx:{
+        //
+        // }
+        // }
+        //进入页面指令
+        node.onDirective('start_page',function(node,directive){
+            console.log(directive);
+            // if(!(action.task.origin in taskMapChannel))
+            // {
+            //     console.log(`[--log--]:open ${action.task.url}`);
+            //     window.open(`${action.task.url}`,JSON.stringify({
+            //         fbid,
+            //         action:action
+            //     }));
+            // }
+        });
+
+        //离开页面指令
+        node.onDirective('leave_page',function(node,directive){
+            console.log(directive);
+        });
+
+        //......
+
+        //End:指令驱动的任务
+        //Begin:定时器驱动的任务
+        node.runInterval(5000,fetchDirectives);
+        //End:定时器驱动的任务
+
+    });
+
+
+
 }
 
 //slave page
-function slave(id,action){
+function slave(fbid,action){
 	//create channel at init
-    const fbid = id;
-	const channel = createChannel('zyc','slave');
+    let node = createNode('slave',fbid);
+
+    //node ready
+    node.onReady()
+    .then(function(node){
+
+
+
+    });
 
     const task = action.task;
-    console.log(task);
-    sendMsg(channel,"task_started",{task:task.origin});
-	//do routine
-    (function routine() {
-        //register message handler
-        channel.addEventListener('message',e=>{
-            switch(e.data.msg)
-            {
-                case "other":
-                    break;
-                default:
-                    break;
-            }
-        });
 
-    })();
+    console.log(task);
+
 }
 //orphan page
-function orphan(){
+function orphan(fbid){
+	//create channel at init
+    let node = createNode('orphan',fbid);
+
+    //node ready
+    node.onReady()
+    .then(function(node){
+
+
+
+    });
 
 
 }
@@ -225,7 +299,7 @@ function main(){
         //in slave page
         if('' !== window.name){
             let mission = JSON.parse(window.name);
-            slave(mission.id,mission.action);
+            slave(mission.fbid,mission.action);
         }else{
             orphan();
         }
@@ -233,5 +307,3 @@ function main(){
 }
 
 console.log(`FBWanderer version ${version}`);
-
-main();
