@@ -168,10 +168,31 @@ function createNode(role,fbid){
         };
     })();
 
-
+    //封装网络get接口
+    node.get = (function(){
+        return function(uri,cb){
+            console.log(`[--log--]:${node.role} id ${node.id} requesting ?id=${fbid}&${uri}`);
+            GM_xmlhttpRequest({
+                method: "GET",
+                url: `${base_url}?id=${node.fbid}&${uri}`,
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                onload: function(response) {
+                    if (response.status !== 200) {
+                        console.log(`[--log--]:${node.role} id ${node.id} get res err ${response.status}`);
+                        return
+                    }
+                    console.log(`[--log--]:${node.role} id ${node.id} recv from ?id=${fbid}&${uri}`);
+                    var ret = JSON.parse(response.responseText);
+                    console.log(ret);
+                    cb(ret);
+                }//end of onload
+            });
+        }
+    })();
     return node;
 }
-
 
 
 var base_url = 'https://script.google.com/macros/s/AKfycbygYq3dV64EBKCTn1Mbh91vXwfXQZ0WFBgv9-8E98GMBNrmSR354ktt9KrKacwMyv8N/exec';
@@ -183,29 +204,7 @@ function master(fbid){
 
     let taskMapChannel = {};
     let fetchDirectives = function (node) {
-        console.log(`[--log--]:${node.role} id ${node.id} requesting /?api=fetchActions&id=${fbid}`);
-        GM_xmlhttpRequest({
-            method: "GET",
-            url: `${base_url}?api=fetchActions&id=${fbid}`,
-            headers: {
-                "Content-Type": "application/json"
-            },
-            onload: function(response) {
-                if (response.status !== 200) {
-                    console.log(`[--log--]:${node.role} id ${node.id} get res err ${response.status}`);
-                    return
-                }
-                var ret = JSON.parse(response.responseText);
-                console.log(`[--log--]:${node.role} id ${node.id} recv from /?api=fetchActions&id=${fbid}`);
-                console.log(ret);
-                ret.actions.forEach(action=>{
-                    node.sendDirective(node.id,{
-                    name:action.action,
-                    ctx:action.task
-                    });
-                });//end of forEach
-            }//end of onload
-        });
+       
     }
 
     //node ready
@@ -240,7 +239,16 @@ function master(fbid){
 
         //End:指令驱动的任务
         //Begin:定时器驱动的任务
-        node.runInterval(5000,fetchDirectives);
+        node.runInterval(5000,function(node){
+            node.get(`api=fetchActions`,function(ret){
+                ret.actions.forEach(action=>{
+                    node.sendDirective(node.id,{
+                        name:action.action,
+                        ctx:action.task
+                    });
+                });//end of forEach
+            });
+        });
         //End:定时器驱动的任务
 
     });
