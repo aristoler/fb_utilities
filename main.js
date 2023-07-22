@@ -1,5 +1,4 @@
 
-
 let version = '0.0.3';
 const ALL_ID = -1;
 
@@ -35,6 +34,7 @@ function createNode(role,fbid){
         return function(toid,msg,payload){
             console.log(`[channel]:${node.role} id ${node.id}-->${ALL_ID === toid ? 'brocast':'private'}  msg ${msg}`);
             node.channel.postMessage({
+                fbid:node.fbid,
                 role:node.role,
                 fromid:node.id,
                 birthtime:node.birthtime,//↑消息宿主相关
@@ -74,12 +74,14 @@ function createNode(role,fbid){
     node.listenMsg('directive',function(remoteMsg){
         //执行指令处理函数
         console.log(`[channel]:${ALL_ID === remoteMsg.toid ? 'brocast':'private'} directive ${remoteMsg.payload.directive.name}<--${remoteMsg.role} id ${remoteMsg.fromid}`);
+        console.log(remoteMsg.payload.directive);
         if(remoteMsg.payload.directive.name in node.directiveHandlers){
 
            const response =(()=>{
                 const res = {};
                 res.promise = new Promise((resolve,reject)=>{
                     res.send = (res)=>{
+                        console.log(res);
                         resolve(res);
                     };
                 });
@@ -91,7 +93,7 @@ function createNode(role,fbid){
 
             //返回结果给指令发送方
             response.promise.then((res)=>{
-                node.sendMsgTo(remoteMsg.fromid,'response',{directive:remoteMsg.payload.directive,res});
+                node.sendMsgTo(remoteMsg.fromid,'response',{directive:remoteMsg.payload.directive,response:res});
             });
         }
     });
@@ -99,7 +101,6 @@ function createNode(role,fbid){
     // 监听指令执行结果，这个一定是远程节点来的，需要将pendingreponses转已决（本地的节点本地执行）
     node.listenMsg('response',function(remoteMsg){
         //执行指令处理函数
-        console.log(`[channel]:${ALL_ID === remoteMsg.toid ? 'brocast':'private'} response ${remoteMsg.payload.directive.name}<--${remoteMsg.role} id ${remoteMsg.fromid}`);
         if(remoteMsg.payload.directive.requestid in node.pendingResponses){
             // 未决转已决
             node.pendingResponses[remoteMsg.payload.directive.requestid].send(remoteMsg.payload.response);
@@ -116,6 +117,7 @@ function createNode(role,fbid){
                 const res = {};
                 res.promise = new Promise((resolve,reject)=>{
                     res.send = (res)=>{
+                        console.log(res);
                         resolve(res);
                     };
                 });
@@ -131,7 +133,7 @@ function createNode(role,fbid){
                 //指令处理函数将pendingresponses改成已决,即调用.send
             }
             }else{
-                node.sendMsgTo(toid,'directive',directive);
+                node.sendMsgTo(toid,'directive',{directive});
                 //远程调用，需等待response消息将pendingresponses改成已决,即调用.send
             }
             //返回为pendingreponses给指令发送方
@@ -168,6 +170,7 @@ function createNode(role,fbid){
     //listen syn
     node.listenMsg('syn',function(remoteMsg){
         node.neighbours.add(remoteMsg.fromid);
+        !node.fbid?(node.fbid=remoteMsg.fbid):""; //for orphan node to syn id
         //master pk
         masterPK(node,remoteMsg);
         //trigger ack
@@ -177,6 +180,7 @@ function createNode(role,fbid){
     //listen ack
     node.listenMsg('ack',function(remoteMsg){
         node.neighbours.add(remoteMsg.fromid);
+        !node.fbid?(node.fbid=remoteMsg.fbid):""; //for orphan node to syn id
         //master pk
         masterPK(node,remoteMsg);
     });
@@ -311,7 +315,17 @@ function master(fbid){
             //         fbid,
             //         action:action
             //     }));
-            // }
+            // }',
+            node.neighbours.forEach((id)=>{
+                node.sendDirective(id,{
+                    name:'report_url',
+                    ctx:{}
+                })
+                .then((response)=>{
+                    console.log(response);
+                });
+            });
+
             response.send({hello:'from response'});
         })
 
@@ -368,7 +382,9 @@ function slave(fbid,action){
         // }
         //进入页面指令
         node.onDirective('report_url',function(node,directive,response){
-
+            response.send({
+                url:window.location.href
+            });
         });
 
         //离开页面指令
@@ -400,14 +416,32 @@ function orphan(fbid){
 	//create channel at init
     let node = createNode('orphan',fbid);
 
-    //node ready
-    node.onReady()
-    .then(function(node){
+    node.onReady(function(node){
 
+        //Begin:指令驱动的任务
+        //directive ={
+        // name,
+        // ctx:{
+        //
+        // }
+        // }
+        //进入页面指令
+        node.onDirective('report_url',function(node,directive,response){
+            response.send({
+                url:window.location.href
+            });
+        });
 
+        //离开页面指令
+        node.onDirective('leave_page',function(node,directive,response){
+
+        });
+
+        //......
+
+        //End:指令驱动的任务
 
     });
-
 
 }
 
@@ -435,3 +469,5 @@ function main(){
 }
 
 console.log(`FBWanderer version ${version}`);
+
+
