@@ -1,4 +1,5 @@
 
+
 let version = '0.0.3';
 const ALL_ID = -1;
 
@@ -52,6 +53,7 @@ function createNode(role,fbid){
                 if((-1 === evt.data.toid || node.id === evt.data.toid)
                     && (evt.data.msg === msg)){
                     console.log(`[channel]:${ALL_ID === evt.data.toid ? 'brocast':'private'} msg ${msg}<--${evt.data.role} id ${evt.data.fromid}`);
+                    //返回
                     cb(evt.data);
                 }
             });
@@ -68,27 +70,72 @@ function createNode(role,fbid){
         };
     })();
 
-    // 监听指令消息
+    // 监听指令消息，这个一定是远程节点来的，结果需要消息送回（本地的节点本地执行）
     node.listenMsg('directive',function(remoteMsg){
         //执行指令处理函数
-        console.log(`[channel]:${ALL_ID === remoteMsg.toid ? 'brocast':'private'} directive ${remoteMsg.payload.name}<--${remoteMsg.role} id ${remoteMsg.fromid}`);
-        if(remoteMsg.payload.name in node.directiveHandlers){
-            node.directiveHandlers[remoteMsg.payload.name](node);
+        console.log(`[channel]:${ALL_ID === remoteMsg.toid ? 'brocast':'private'} directive ${remoteMsg.payload.directive.name}<--${remoteMsg.role} id ${remoteMsg.fromid}`);
+        if(remoteMsg.payload.directive.name in node.directiveHandlers){
+
+           const response =(()=>{
+                const res = {};
+                res.promise = new Promise((resolve,reject)=>{
+                    res.send = (res)=>{
+                        resolve(res);
+                    };
+                });
+                return res;
+            })();
+
+            //注入一个promise,一旦执行完可以拿到数据
+            node.directiveHandlers[remoteMsg.payload.directive.name](node,remoteMsg.payload.directive,response);
+
+            //返回结果给指令发送方
+            response.promise.then((res)=>{
+                node.sendMsgTo(remoteMsg.fromid,'response',{directive:remoteMsg.payload.directive,res});
+            });
         }
     });
 
-    //封装指令发送接口
+    // 监听指令执行结果，这个一定是远程节点来的，需要将pendingreponses转已决（本地的节点本地执行）
+    node.listenMsg('response',function(remoteMsg){
+        //执行指令处理函数
+        console.log(`[channel]:${ALL_ID === remoteMsg.toid ? 'brocast':'private'} response ${remoteMsg.payload.directive.name}<--${remoteMsg.role} id ${remoteMsg.fromid}`);
+        if(remoteMsg.payload.directive.requestid in node.pendingResponses){
+            // 未决转已决
+            node.pendingResponses[remoteMsg.payload.directive.requestid].send(remoteMsg.payload.response);
+        }
+    });
+
+    //封装指令发送接口，返回结果promise本地调用
+    node.pendingResponses = {};
     node.sendDirective = (function(){
         return function(toid,directive) {
+            directive.requestid = Date.now();
+            //登记一个promise,一旦执行完可以拿到数据
+            const response =(()=>{
+                const res = {};
+                res.promise = new Promise((resolve,reject)=>{
+                    res.send = (res)=>{
+                        resolve(res);
+                    };
+                });
+                return res;
+            })();
+            node.pendingResponses[directive.requestid] = response;
+            //发送指令
             if(toid === node.id)
             {
-                //通一进程直接调用,channel不能给自己发消息
+                //同一进程直接调用,channel监听不给自己发的消息
                 if(directive.name in node.directiveHandlers){
-                    node.directiveHandlers[directive.name](node,directive);
-                }
+                node.directiveHandlers[directive.name](node,directive,response);
+                //指令处理函数将pendingresponses改成已决,即调用.send
+            }
             }else{
                 node.sendMsgTo(toid,'directive',directive);
+                //远程调用，需等待response消息将pendingresponses改成已决,即调用.send
             }
+            //返回为pendingreponses给指令发送方
+            return node.pendingResponses[directive.requestid].promise;
         };
     })();
 
@@ -156,7 +203,7 @@ function createNode(role,fbid){
      node.runInterval = (function(){
         return function(interval,cb){
              console.log(`[--log--]:${node.role} id ${node.id} starting interval task`);
-             return setInterval(()=>{cb(node)}, interval);
+             const intervalId = setInterval(()=>{cb(node,intervalId)}, interval);
         };
     })();
 
@@ -170,27 +217,64 @@ function createNode(role,fbid){
 
     //封装网络get接口
     node.get = (function(){
-        return function(uri,cb){
-            console.log(`[--log--]:${node.role} id ${node.id} requesting ?id=${fbid}&${uri}`);
-            GM_xmlhttpRequest({
-                method: "GET",
-                url: `${base_url}?id=${node.fbid}&${uri}`,
-                headers: {
-                    "Content-Type": "application/json"
-                },
-                onload: function(response) {
-                    if (response.status !== 200) {
-                        console.log(`[--log--]:${node.role} id ${node.id} get res err ${response.status}`);
-                        return
-                    }
-                    console.log(`[--log--]:${node.role} id ${node.id} recv from ?id=${fbid}&${uri}`);
-                    var ret = JSON.parse(response.responseText);
-                    console.log(ret);
-                    cb(ret);
-                }//end of onload
+        return function(uri){
+
+            console.log(`[--log--]:${node.role} id ${node.id} getting ?id=${fbid}&${uri}`);
+            return new Promise((resolve,reject)=>{
+                GM_xmlhttpRequest({
+                    method: "GET",
+                    url: `${base_url}?id=${node.fbid}&${uri}`,
+                    nocache: true,
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    onload: function(response) {
+                        if (response.status !== 200) {
+                            console.log(`[--log--]:${node.role} id ${node.id} get res err ${response.status}`);
+                            reject(uri);
+                            return
+                        }
+                        console.log(`[--log--]:${node.role} id ${node.id} recv from ?id=${fbid}&${uri}`);
+                        var ret = JSON.parse(response.responseText);
+                        console.log(ret);
+                        resolve(ret);
+                    }//end of onload
+                });
             });
         }
     })();
+
+     //封装网络post接口
+    node.post = (function(){
+        return function(uri,data){
+
+            console.log(`[--log--]:${node.role} id ${node.id} posting ?id=${fbid}&${uri}`);
+            return new Promise((resolve,reject)=>{
+                GM_xmlhttpRequest({
+                    method: "POST",
+                    url: `${base_url}?id=${node.fbid}&${uri}`,
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    data:data,
+                    nocache: true,
+                    onload: function(response) {
+                        if (response.status !== 200) {
+                            console.log(`[--log--]:${node.role} id ${node.id} get res err ${response.status}`);
+                            reject(uri);
+                            return
+                        }
+                        console.log(`[--log--]:${node.role} id ${node.id} recv from ?id=${fbid}&${uri}`);
+                        var ret = JSON.parse(response.responseText);
+                        console.log(ret);
+                        resolve(ret);
+                    }//end of onload
+                });
+            });
+        }
+    })();
+
+
     return node;
 }
 
@@ -204,7 +288,7 @@ function master(fbid){
 
     let taskMapChannel = {};
     let fetchDirectives = function (node) {
-       
+
     }
 
     //node ready
@@ -218,7 +302,7 @@ function master(fbid){
         // }
         // }
         //进入页面指令
-        node.onDirective('start_page',function(node,directive){
+        node.onDirective('start_page',function(node,directive,response){
             console.log(directive);
             // if(!(action.task.origin in taskMapChannel))
             // {
@@ -228,27 +312,36 @@ function master(fbid){
             //         action:action
             //     }));
             // }
-        });
+            response.send({hello:'from response'});
+        })
 
         //离开页面指令
-        node.onDirective('leave_page',function(node,directive){
+        node.onDirective('leave_page',function(node,directive,response){
             console.log(directive);
         });
 
         //......
 
         //End:指令驱动的任务
+
         //Begin:定时器驱动的任务
-        node.runInterval(5000,function(node){
-            node.get(`api=fetchActions`,function(ret){
-                ret.actions.forEach(action=>{
-                    node.sendDirective(node.id,{
-                        name:action.action,
-                        ctx:action.task
-                    });
-                });//end of forEach
+        //5s定时获取新动作
+        node.runInterval(5000,function(node,intervalId){
+            node.get(`api=fetchActions`)
+                .then(function(ret){
+                    ret.actions.forEach(action=>{
+                        node.sendDirective(node.id,{
+                            name:action.action,
+                            ctx:action.task
+                        })
+                        .then((response)=>{
+                            console.log(response);
+                        });
+                    });//end of forEach
             });
         });
+
+
         //End:定时器驱动的任务
 
     });
@@ -263,10 +356,37 @@ function slave(fbid,action){
     let node = createNode('slave',fbid);
 
     //node ready
-    node.onReady()
-    .then(function(node){
+//node ready
+    node.onReady(function(node){
+
+        //Begin:指令驱动的任务
+        //directive ={
+        // name,
+        // ctx:{
+        //
+        // }
+        // }
+        //进入页面指令
+        node.onDirective('report_url',function(node,directive,response){
+
+        });
+
+        //离开页面指令
+        node.onDirective('leave_page',function(node,directive,response){
+
+        });
+
+        //......
+
+        //End:指令驱动的任务
+
+        //Begin:定时器驱动的任务
+//         node.runInterval(5000,function(node,intervalId){
+
+//         });
 
 
+        //End:定时器驱动的任务
 
     });
 
