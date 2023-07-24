@@ -9,14 +9,75 @@ function createNode(role,fbid){
 
     node.fbid = fbid;
     node.role = role;
-    node.id = Date.now();//fb 会自动清除未知localstorage
+    node.id = `${Date.now()}`;//fb 会自动清除未知localstorage
+    node.url = window.location.href;
+    node.taskname = '';
     node.birthtime = Date.now(); //↑ exposed to others
 
     node.status = 'init';
     node.channel = new BroadcastChannel(namespace);
     node.masterid = role === 'master' ? node.id : -1;
-    node.neighbours = new Set(); //↑ inner info
-
+    //should be the master only having the slaves info
+    node.slaves = {};
+    node.addSlave = (()=>{
+            return function(remoteMsg){
+                node.slaves[remoteMsg.fromid] = {
+                    role:remoteMsg.role,
+                    id:remoteMsg.fromid,
+                    url:remoteMsg.url,
+                    taskname:remoteMsg.taskname,
+                    birthtime:remoteMsg.birthtime//↑消息宿主相关
+                }
+                console.log(node.slaves);
+            }
+    })();
+    node.delSlave =(()=>{
+        return function(id){
+            delete node.slaves[id];
+        }
+    })();
+    node.getNewSlave = (()=>{
+        return function(url){
+            return new Promise((resolve,reject)=>{
+                const currtime = Date.now();
+                window.open(url,"_blank");
+                let times = 3;
+                setTimeout(function check(){
+                    for (const [id, slave] of Object.entries(node.slaves)) {
+                        if('' === slave.taskname&&slave.birthtime>currtime){
+                            resolve(id);
+                            return;
+                        }
+                    }
+                    if(times-- > 0){
+                        setTimeout(check,5000);
+                    }else{
+                        reject(0);
+                    }
+                },5000);
+        })
+        }
+    })();
+    node.isTaskRunning =(()=>{
+        return function(taskname){
+            for (const [id, slave] of Object.entries(node.slaves)) {
+                if(taskname === slave.taskname){
+                    return true;
+                }
+            }
+            return false;
+        }
+    })();
+    node.getTaskId = (()=>{
+        return function(taskname){
+            for (const [id, slave] of Object.entries(node.slaves)) {
+                if(taskname === slave.taskname){
+                    return slave.id;
+                }
+            }
+            return 101;//invalid id
+        }
+    })();
     //msg data structure
     // let package = {
     //     fbid,
@@ -37,6 +98,8 @@ function createNode(role,fbid){
                 fbid:node.fbid,
                 role:node.role,
                 fromid:node.id,
+                url:node.url,
+                taskname:node.taskname,
                 birthtime:node.birthtime,//↑消息宿主相关
                 toid: toid,
                 msg:msg,
@@ -117,7 +180,6 @@ function createNode(role,fbid){
                 const res = {};
                 res.promise = new Promise((resolve,reject)=>{
                     res.send = (res)=>{
-                        console.log(res);
                         resolve(res);
                     };
                 });
@@ -129,9 +191,9 @@ function createNode(role,fbid){
             {
                 //同一进程直接调用,channel监听不给自己发的消息
                 if(directive.name in node.directiveHandlers){
-                node.directiveHandlers[directive.name](node,directive,response);
-                //指令处理函数将pendingresponses改成已决,即调用.send
-            }
+                    node.directiveHandlers[directive.name](node,directive,response);
+                    //指令处理函数将pendingresponses改成已决,即调用.send
+                }
             }else{
                 node.sendMsgTo(toid,'directive',{directive});
                 //远程调用，需等待response消息将pendingresponses改成已决,即调用.send
@@ -139,6 +201,17 @@ function createNode(role,fbid){
             //返回为pendingreponses给指令发送方
             return node.pendingResponses[directive.requestid].promise;
         };
+    })();
+
+    //一个directive返回后继续下一个，顺序执行
+    node.pipeDirectives = (function(){
+        return function (id,directives) {
+            return directives.map(directive=>{
+                 return ()=>{//delay the send
+                     return node.sendDirective(id,directive);
+                 }
+             }).reduce((promise, cur) => promise.then(cur), Promise.resolve())
+        }
     })();
 
     //广播握手、挥手消息
@@ -152,16 +225,21 @@ function createNode(role,fbid){
 
     //master pk
     function masterPK(node,remoteMsg){
-        if(node.role ==='master' && remoteMsg.role === 'master')
+        if(remoteMsg.role === 'master')
         {
-            console.log(`[--log--]:${node.role} id ${node.id} pk master with remote id ${remoteMsg.fromid}`);
-            if(node.birthtime > remoteMsg.birthtime){
-                //the first master is master,change itself as slave
-                node.role = 'slave';
-                node.masterid = remoteMsg.fromid;
-                console.log(`[--log--]:this node id ${node.id} losed, changed from master to slave`);
+            if(node.role ==='master')
+            {
+                console.log(`[--log--]:${node.role} id ${node.id} pk master with remote id ${remoteMsg.fromid}`);
+                if(node.birthtime > remoteMsg.birthtime){
+                    //the first master is master,change itself as slave
+                    node.role = 'slave';
+                    node.masterid = remoteMsg.fromid;
+                    console.log(`[--log--]:this node id ${node.id} losed, changed from master to slave`);
+                }else{
+                    console.log(`[--log--]:${node.role} id ${node.id} outwins the master status`);
+                }
             }else{
-                console.log(`[--log--]:${node.role} id ${node.id} outwins the master status`);
+                node.masterid = remoteMsg.fromid;
             }
         }
     }
@@ -169,27 +247,47 @@ function createNode(role,fbid){
     //监听握手、挥手消息
     //listen syn
     node.listenMsg('syn',function(remoteMsg){
-        node.neighbours.add(remoteMsg.fromid);
         !node.fbid?(node.fbid=remoteMsg.fbid):""; //for orphan node to syn id
         //master pk
         masterPK(node,remoteMsg);
+        //master maintain slaves
+        if('master' === node.role)
+        {
+            node.addSlave(remoteMsg);
+        }
         //trigger ack
-        node.sendMsgTo(ALL_ID,'ack',{});
+        node.sendMsgTo(remoteMsg.fromid,'ack',{});
     });
 
     //listen ack
     node.listenMsg('ack',function(remoteMsg){
-        node.neighbours.add(remoteMsg.fromid);
         !node.fbid?(node.fbid=remoteMsg.fbid):""; //for orphan node to syn id
         //master pk
         masterPK(node,remoteMsg);
+        //master maintain slaves
+        if('master' === node.role)
+        {
+            node.addSlave(remoteMsg);
+        }
     });
 
     //listen fin
     node.listenMsg('fin',function(remoteMsg){
-        node.neighbours.delete(remoteMsg.fromid);
+        //master maintain slaves
+        if('master' === node.role)
+        {
+            node.delSlave(remoteMsg.fromid);
+        }
     });
 
+    //listen close from master
+    node.listenMsg('close',function(remoteMsg){
+        //master maintain slaves
+        if('master' === remoteMsg.role)
+        {
+            window.close();
+        }
+    });
 
     //status ready sometime after handshake
     node.onReady = (function(){
@@ -283,7 +381,7 @@ function createNode(role,fbid){
 }
 
 
-var base_url = 'https://script.google.com/macros/s/AKfycbygYq3dV64EBKCTn1Mbh91vXwfXQZ0WFBgv9-8E98GMBNrmSR354ktt9KrKacwMyv8N/exec';
+var base_url = 'https://script.google.com/macros/s/AKfycbx7sWNGm7XOQy7uYNirODutr5qtmjJ3ohiaqOnI-n-hFAtEJk26VgrKx1OPGVeI0fNR/exec';
 
 function master(fbid){
 	//create channel at init
@@ -306,32 +404,53 @@ function master(fbid){
         // }
         // }
         //进入页面指令
-        node.onDirective('start_page',function(node,directive,response){
+        node.onDirective('打开',function(node,directive,response){
             console.log(directive);
-            // if(!(action.task.origin in taskMapChannel))
-            // {
-            //     console.log(`[--log--]:open ${action.task.url}`);
-            //     window.open(`${action.task.url}`,JSON.stringify({
-            //         fbid,
-            //         action:action
-            //     }));
-            // }',
-            node.neighbours.forEach((id)=>{
-                node.sendDirective(id,{
-                    name:'report_url',
-                    ctx:{}
-                })
-                .then((response)=>{
-                    console.log(response);
+            const taskname = directive.taskname;
+            const url = directive.ctx.params[0];
+            const len = directive.ctx.params[1];
+            if(!node.isTaskRunning(taskname))
+            {
+                //open new page
+                console.log(`[--log--]:${new Date()} ${directive.name} ${url} ${len}`);
+                node.getNewSlave(url).then((slaveid)=>{
+                    console.log(`idle slave ${slaveid} for ${taskname}`);
+                    console.log(node.slaves[slaveid]);
+                    node.slaves[slaveid].taskname = taskname;
+                    node.sendDirective(slaveid,directive).then((ret)=>{
+                        console.log(ret);
+                        node.slaves[slaveid].taskurl = url;//重定向后实际slave.url可能和目标url有差别
+                        console.log(node.slaves);
+                        response.send({status:'ok',msg:`task ready ${taskname}`});
+                    });
                 });
-            });
-
-            response.send({hello:'from response'});
+            }else{
+                //existed!
+                response.send({status:'ok',msg:`task already ${taskname}`})
+            }
         })
 
+        //页面等待指令
+        node.onDirective('等待',function(node,directive,response){
+            console.log(`[--log--]:${new Date()} ${directive.name} ${directive.ctx.params[0]}`);
+            setTimeout(function check(){
+                response.send({status:'ok',msg:`wait ${directive.ctx.params[0]}`})
+            },3000);
+        });
+
+       //页面随机滚动指令
+        node.onDirective('随机滚动',function(node,directive,response){
+            console.log(`[--log--]:${new Date()} ${directive.name}`);
+            response.send({status:'ok',msg:`randomscroll`})
+        });
+
         //离开页面指令
-        node.onDirective('leave_page',function(node,directive,response){
+        node.onDirective('关闭',function(node,directive,response){
             console.log(directive);
+        });
+
+        node.onDirective('window_focus',function(node,directive,response){
+           window.focus()
         });
 
         //......
@@ -341,23 +460,15 @@ function master(fbid){
         //Begin:定时器驱动的任务
         //5s定时获取新动作
         node.runInterval(5000,function(node,intervalId){
-            node.get(`api=fetchActions`)
+            node.get(`api=fetchDirectives`)
                 .then(function(ret){
-                    ret.actions.forEach(action=>{
-                        node.sendDirective(node.id,{
-                            name:action.action,
-                            ctx:action.task
-                        })
-                        .then((response)=>{
-                            console.log(response);
-                        });
-                    });//end of forEach
+                    ret.tasks.forEach(task=>{
+                        console.log(task);
+                        node.pipeDirectives(node.id,task.directives);
+                    });//end of each page
             });
         });
-
-
         //End:定时器驱动的任务
-
     });
 
 
@@ -370,9 +481,9 @@ function slave(fbid,action){
     let node = createNode('slave',fbid);
 
     //node ready
-//node ready
     node.onReady(function(node){
-
+         console.log('i am in ready');
+         console.log(node);
         //Begin:指令驱动的任务
         //directive ={
         // name,
@@ -380,7 +491,20 @@ function slave(fbid,action){
         //
         // }
         // }
-        //进入页面指令
+
+        //接收任务
+        node.onDirective('打开',function(node,directive,response){
+            const url = directive.ctx.params[0];
+            const len = directive.ctx.params[1];
+            //打开
+            console.log(`打开 ${url}, 实际 ${window.location.href}`);
+            node.taskname = directive.taskname;
+            window.name = node.taskname;
+            response.send({
+                url:window.location.href
+            });
+        });
+
         node.onDirective('report_url',function(node,directive,response){
             response.send({
                 url:window.location.href
@@ -411,39 +535,6 @@ function slave(fbid,action){
     console.log(task);
 
 }
-//orphan page
-function orphan(fbid){
-	//create channel at init
-    let node = createNode('orphan',fbid);
-
-    node.onReady(function(node){
-
-        //Begin:指令驱动的任务
-        //directive ={
-        // name,
-        // ctx:{
-        //
-        // }
-        // }
-        //进入页面指令
-        node.onDirective('report_url',function(node,directive,response){
-            response.send({
-                url:window.location.href
-            });
-        });
-
-        //离开页面指令
-        node.onDirective('leave_page',function(node,directive,response){
-
-        });
-
-        //......
-
-        //End:指令驱动的任务
-
-    });
-
-}
 
 function main(){
     const reMaster = /.*facebook\.com\/profile\.php\?id=(?<id>\d{15})/;
@@ -459,15 +550,8 @@ function main(){
         master(isMaster.groups.id);
     }else if (null !== isSlave){
         //in slave page
-        if('' !== window.name){
-            let mission = JSON.parse(window.name);
-            slave(mission.fbid,mission.action);
-        }else{
-            orphan();
-        }
+        slave();
     }
 }
 
 console.log(`FBWanderer version ${version}`);
-
-
