@@ -1,6 +1,78 @@
-
 let version = '0.0.3';
 const ALL_ID = -1;
+
+function worker_timer(){
+    function timer(){
+        const workercode = () => {
+            let timerInterval;
+            let time = 0;
+            const namespace = 'zzyycc-timer';
+            const timerchannel = new BroadcastChannel(namespace);
+            timerchannel.addEventListener('message',evt=>{
+                if('starttimer' === evt.data.msg)
+                {
+                    setTimeout(()=>{
+                        timerchannel.postMessage({
+                            toid:evt.data.fromid,
+                            msg:'endtimer',
+                            timerid: evt.data.timerid
+                        });
+                    },evt.data.delay);
+                }else if('startinterval'=== evt.data.msg){
+                    setInterval(()=>{
+                        timerchannel.postMessage({
+                            toid:evt.data.fromid,
+                            msg:'interval',
+                            timerid: evt.data.timerid
+                        });
+                    },evt.data.delay);
+                }
+            });
+        };
+
+        let code = workercode.toString();
+        code = code.substring(code.indexOf("{") + 1, code.lastIndexOf("}"));
+
+        const blob = new Blob([code], { type: "application/javascript" });
+        const worker_script = URL.createObjectURL(blob);
+        console.log(`[--log--]:${new Date()} worker timer created!`);
+        const timerWorker = new Worker(worker_script);
+        // timerWorker.postMessage({ turn: "on" });
+    }
+
+    mainpage_eval(timer);
+}
+
+function mainpage_eval(func){
+    var script = document.createElement("script");
+    script.textContent = "(" + func.toString() + ")();";
+    document.body.appendChild(script);
+}
+
+function dateFormat (date,format) { //author: meizz
+  var o = {
+      "M+": date.getMonth() + 1, //月份
+      "d+": date.getDate(), //日
+      "h+": date.getHours(), //小时
+      "m+": date.getMinutes(), //分
+      "s+": date.getSeconds(), //秒
+      "q+": Math.floor((date.getMonth() + 3) / 3), //季度
+      "S": date.getMilliseconds() //毫秒
+  };
+  if (/(y+)/.test(format)) {
+      format = format.replace(RegExp.$1, (date.getFullYear() + "").substr(4 - RegExp.$1.length));
+  }
+  for (var k in o){
+      if (new RegExp("(" + k + ")").test(format)){
+          format = format.replace(RegExp.$1, (RegExp.$1.length == 1) ? (o[k]) : (("00" + o[k]).substr(("" + o[k]).length)));
+      }
+  }
+  return format;
+}
+
+function getCurrTime(){
+  return dateFormat(new Date,"yyyy-M-d hh:mm:ss");
+}
 
 function createNode(role,fbid){
 
@@ -11,7 +83,7 @@ function createNode(role,fbid){
     node.role = role;
     node.id = `${Date.now()}`;//fb 会自动清除未知localstorage
     node.url = window.location.href;
-    node.taskname = '';
+    node.taskname = window.name; //初始是'', reload之后taskname还在
     node.birthtime = Date.now(); //↑ exposed to others
 
     node.status = 'init';
@@ -36,26 +108,14 @@ function createNode(role,fbid){
             delete node.slaves[id];
         }
     })();
+    node.slavespipe = [];
     node.getNewSlave = (()=>{
         return function(url){
             return new Promise((resolve,reject)=>{
-                const currtime = Date.now();
+                // const currtime = Date.now();
                 window.open(url,"_blank");
-                let times = 3;
-                setTimeout(function check(){
-                    for (const [id, slave] of Object.entries(node.slaves)) {
-                        if('' === slave.taskname&&slave.birthtime>currtime){
-                            resolve(id);
-                            return;
-                        }
-                    }
-                    if(times-- > 0){
-                        setTimeout(check,5000);
-                    }else{
-                        reject(0);
-                    }
-                },5000);
-        })
+                node.slavespipe.push(resolve);
+            })
         }
     })();
     node.isTaskRunning =(()=>{
@@ -78,22 +138,51 @@ function createNode(role,fbid){
             return 101;//invalid id
         }
     })();
-    //msg data structure
-    // let package = {
-    //     fbid,
-    //     role,
-    //     fromid,
-    //     birthtime, ↑ source node info
-    //     toid,
-    //     msg,//syn,ack,fin,
-    //     payload:{}
-    //     timestamp,
-    // }
+
+    node.timerHandlers={};
+    node.timerchannel = new BroadcastChannel(namespace+'-timer');
+    node.callMeLater = (()=>{
+        return function(delay,cb){
+            let timerid = `${Date.now()}-${Math.floor(Math.random()*10000)}`;
+            node.timerHandlers[timerid] = cb;
+            node.timerchannel.postMessage({
+                fromid:node.id,
+                msg:'starttimer',
+                timerid: timerid,
+                delay:delay
+            });
+        }
+    })();
+    node.timerchannel.addEventListener('message',evt=>{
+        if((node.id === evt.data.toid && 'endtimer' === evt.data.msg))
+        {
+            let cb = node.timerHandlers[evt.data.timerid];
+            cb(node);
+            delete node.timerHandlers[evt.data.timerid];
+        }else if((node.id === evt.data.toid && 'interval' === evt.data.msg)){
+            let cb = node.timerHandlers[evt.data.timerid];
+            cb(node);
+        }
+    });
+
+     //封装定时任务接口
+     node.startInterval = (function(){
+        return function(interval,cb){
+           let timerid = `${Date.now()}-${Math.floor(Math.random()*10000)}`;
+            node.timerHandlers[timerid] = cb;
+            node.timerchannel.postMessage({
+                fromid:node.id,
+                msg:'startinterval',
+                timerid: timerid,
+                delay:interval
+            });
+        };
+    })();
 
     //封装消息发送接口
     node.sendMsgTo = (function () {
         return function(toid,msg,payload){
-            console.log(`[channel]:${node.role} id ${node.id}-->${ALL_ID === toid ? 'brocast':'private'}  msg ${msg}`);
+            console.log(`[channel]:${getCurrTime()} ${node.role} id ${node.id}-->${ALL_ID === toid ? 'brocast':'private'}  msg ${msg}`);
             node.channel.postMessage({
                 fbid:node.fbid,
                 role:node.role,
@@ -115,7 +204,7 @@ function createNode(role,fbid){
             node.channel.addEventListener('message',evt=>{
                 if((-1 === evt.data.toid || node.id === evt.data.toid)
                     && (evt.data.msg === msg)){
-                    console.log(`[channel]:${ALL_ID === evt.data.toid ? 'brocast':'private'} msg ${msg}<--${evt.data.role} id ${evt.data.fromid}`);
+                    console.log(`[channel]:${getCurrTime()} ${ALL_ID === evt.data.toid ? 'brocast':'private'} msg ${msg}<--${evt.data.role} id ${evt.data.fromid}`);
                     //返回
                     cb(evt.data);
                 }
@@ -125,7 +214,10 @@ function createNode(role,fbid){
 
 
     //封装指令注册接口
-    node.directiveHandlers = {}
+    node.directiveHandlers = {'默认':(node,directive,response)=>{
+        console.log(`收到${directive.name}，但未注册默认指令处理器`);
+        response.send({status:'ok',msg:`收到指令 ${directive.name}，但未注册默认指令处理器`});
+    }}
     node.onDirective = (function(){
         return function(directive,cb) {
             //每条指令函数唯一
@@ -136,29 +228,29 @@ function createNode(role,fbid){
     // 监听指令消息，这个一定是远程节点来的，结果需要消息送回（本地的节点本地执行）
     node.listenMsg('directive',function(remoteMsg){
         //执行指令处理函数
-        console.log(`[channel]:${ALL_ID === remoteMsg.toid ? 'brocast':'private'} directive ${remoteMsg.payload.directive.name}<--${remoteMsg.role} id ${remoteMsg.fromid}`);
-        console.log(remoteMsg.payload.directive);
-        if(remoteMsg.payload.directive.name in node.directiveHandlers){
-
-           const response =(()=>{
-                const res = {};
-                res.promise = new Promise((resolve,reject)=>{
-                    res.send = (res)=>{
-                        console.log(res);
-                        resolve(res);
-                    };
-                });
-                return res;
-            })();
-
-            //注入一个promise,一旦执行完可以拿到数据
-            node.directiveHandlers[remoteMsg.payload.directive.name](node,remoteMsg.payload.directive,response);
-
-            //返回结果给指令发送方
-            response.promise.then((res)=>{
-                node.sendMsgTo(remoteMsg.fromid,'response',{directive:remoteMsg.payload.directive,response:res});
-            });
+        console.log(`[channel]:${getCurrTime()} ${ALL_ID === remoteMsg.toid ? 'brocast':'private'} directive ${remoteMsg.payload.directive.name}<--${remoteMsg.role} id ${remoteMsg.fromid}`);
+        let handler = node.directiveHandlers['默认'];
+        if(remoteMsg.payload.directive.name in node.directiveHandlers)
+        {
+            handler = node.directiveHandlers[remoteMsg.payload.directive.name];
         }
+        const response =(()=>{
+            const res = {};
+            res.promise = new Promise((resolve,reject)=>{
+                res.send = (res)=>{
+                    resolve(res);
+                };
+            });
+            return res;
+        })();
+
+        //注入一个promise,一旦执行完可以拿到数据
+        handler(node,remoteMsg.payload.directive,response);
+
+        //返回结果给指令发送方
+        response.promise.then((res)=>{
+            node.sendMsgTo(remoteMsg.fromid,'response',{directive:remoteMsg.payload.directive,response:res});
+        });
     });
 
     // 监听指令执行结果，这个一定是远程节点来的，需要将pendingreponses转已决（本地的节点本地执行）
@@ -174,7 +266,8 @@ function createNode(role,fbid){
     node.pendingResponses = {};
     node.sendDirective = (function(){
         return function(toid,directive) {
-            directive.requestid = Date.now();
+            //1s内可能并发，增加随机数
+            directive.requestid = `${Date.now()}-${Math.floor(Math.random()*10000)}`;
             //登记一个promise,一旦执行完可以拿到数据
             const response =(()=>{
                 const res = {};
@@ -183,17 +276,26 @@ function createNode(role,fbid){
                         resolve(res);
                     };
                 });
+                res.createdtime = Date.now();
+                res.requestid = directive.requestid;
                 return res;
             })();
             node.pendingResponses[directive.requestid] = response;
             //发送指令
-            if(toid === node.id)
+            if(toid === 101){//找不到节点
+                return new Promise((resolve,reject)=>{
+                    resolve({status:'error',msg: 'ID 101 the target node is not existed'});
+                });
+            }else if(toid === node.id)
             {
                 //同一进程直接调用,channel监听不给自己发的消息
-                if(directive.name in node.directiveHandlers){
-                    node.directiveHandlers[directive.name](node,directive,response);
-                    //指令处理函数将pendingresponses改成已决,即调用.send
+                let handler = node.directiveHandlers['默认'];
+                if(directive.name in node.directiveHandlers)
+                {
+                    handler = node.directiveHandlers[directive.name];
                 }
+                handler(node,directive,response);
+                //指令处理函数将pendingresponses改成已决,即调用.send
             }else{
                 node.sendMsgTo(toid,'directive',{directive});
                 //远程调用，需等待response消息将pendingresponses改成已决,即调用.send
@@ -201,6 +303,18 @@ function createNode(role,fbid){
             //返回为pendingreponses给指令发送方
             return node.pendingResponses[directive.requestid].promise;
         };
+    })();
+    //delete from the object after its fullfilled 5 mins  to avoid mem leakage
+    node.clearResources = (()=>{
+        return function(){
+            for (const [requestid, pendingResponse] of Object.entries(node.pendingResponses)) {
+                if(pendingResponse.createdtime + 5*60*1000 < Date.now()){
+                    pendingResponse.promise.then(()=>{
+                        delete node.pendingResponses[requestid];
+                    });
+                }
+            }
+        }
     })();
 
     //一个directive返回后继续下一个，顺序执行
@@ -289,10 +403,30 @@ function createNode(role,fbid){
         }
     });
 
+    //listen pageready from slave
+    node.listenMsg('pageready',function(remoteMsg){
+        //master maintain slaves
+        if('slave' === remoteMsg.role)
+        {
+            //如有任务再等待空节点，则resolve一下。shift先来先得
+            if('' === remoteMsg.taskname&&node.slavespipe.length>0){
+                //shift a resolve out and call
+                node.slavespipe.shift()(remoteMsg.fromid);
+            }else{
+                const pending = node.pendingrefreshs[remoteMsg.taskname];
+                if(pending)
+                {
+                    pending.resolve(remoteMsg.fromid);
+                    delete node.pendingrefreshs[remoteMsg.taskname]; //release reference
+                }
+            }
+        }
+    });
+
     //status ready sometime after handshake
     node.onReady = (function(){
         return function(cb){
-            setTimeout(()=>{
+            setTimeout(()=>{ //这个时候页面应该还是激活状态，保留原生定时器
                 console.log(`[--log--]:${node.role} id ${node.id} status ready`);
                 node.status = 'ready';
                 console.log(node);
@@ -300,43 +434,56 @@ function createNode(role,fbid){
             },1000);
         }
     })();
+    //refresh task
+    node.pendingrefreshs = {};
+    node.refreshTask = (function(){
+        return function(taskname){
+          const pendingrefresh = (()=>{
+                const pending = {};
+                pending.promise = new Promise((resolve,reject)=>{
+                    pending.resolve = (slaveid)=>{resolve(slaveid);};
+                });
+                pending.createdtime = Date.now();
+                return pending;
+            })();
 
-     //封装定时任务接口
-     node.runInterval = (function(){
-        return function(interval,cb){
-             console.log(`[--log--]:${node.role} id ${node.id} starting interval task`);
-             const intervalId = setInterval(()=>{cb(node,intervalId)}, interval);
-        };
+            const reloaddirective = {
+                name:'刷新',
+                taskname: taskname,
+                ctx:{}
+            };
+            //刷新指令
+            return node.sendDirective(node.getTaskId(taskname),reloaddirective)
+                .then((ret)=>{
+                node.pendingrefreshs[taskname] = pendingrefresh;
+                //指令发送成功才返回promise
+                return pendingrefresh.promise;
+            });
+        }
     })();
 
-    //封装延时任务接口
-    node.runDelay = (function(){
-        return function(dely,cb){
-             console.log(`[--log--]:${node.role} id ${node.id} starting interval task`);
-             return setTimeout(()=>{cb(node)}, dely);
-        };
-    })();
 
     //封装网络get接口
     node.get = (function(){
         return function(uri){
 
-            console.log(`[--log--]:${node.role} id ${node.id} getting ?id=${fbid}&${uri}`);
+            console.log(`[--log--]:${getCurrTime()} ${node.role} id ${node.id} getting ?id=${fbid}&${uri}`);
             return new Promise((resolve,reject)=>{
                 GM_xmlhttpRequest({
                     method: "GET",
                     url: `${base_url}?id=${node.fbid}&${uri}`,
                     nocache: true,
+                    timeout:30000,
                     headers: {
                         "Content-Type": "application/json"
                     },
                     onload: function(response) {
                         if (response.status !== 200) {
-                            console.log(`[--log--]:${node.role} id ${node.id} get res err ${response.status}`);
+                            console.log(`[--log--]:${getCurrTime()} ${node.role} id ${node.id} get res err ${response.status}`);
                             reject(uri);
                             return
                         }
-                        console.log(`[--log--]:${node.role} id ${node.id} recv from ?id=${fbid}&${uri}`);
+                        console.log(`[--log--]:${getCurrTime()} ${node.role} id ${node.id} recv from ?id=${fbid}&${uri}`);
                         var ret = JSON.parse(response.responseText);
                         console.log(ret);
                         resolve(ret);
@@ -350,7 +497,7 @@ function createNode(role,fbid){
     node.post = (function(){
         return function(uri,data){
 
-            console.log(`[--log--]:${node.role} id ${node.id} posting ?id=${fbid}&${uri}`);
+            console.log(`[--log--]:${getCurrTime()} ${node.role} id ${node.id} posting ?id=${fbid}&${uri}`);
             return new Promise((resolve,reject)=>{
                 GM_xmlhttpRequest({
                     method: "POST",
@@ -358,15 +505,16 @@ function createNode(role,fbid){
                     headers: {
                         "Content-Type": "application/json"
                     },
-                    data:data,
+                    data: JSON.stringify(data),
                     nocache: true,
+                    timeout:30000,
                     onload: function(response) {
                         if (response.status !== 200) {
-                            console.log(`[--log--]:${node.role} id ${node.id} get res err ${response.status}`);
+                            console.log(`[--log--]:${getCurrTime()} ${node.role} id ${node.id} get res err ${response.status}`);
                             reject(uri);
                             return
                         }
-                        console.log(`[--log--]:${node.role} id ${node.id} recv from ?id=${fbid}&${uri}`);
+                        console.log(`[--log--]:${getCurrTime()} ${node.role} id ${node.id} recv from ?id=${fbid}&${uri}`);
                         var ret = JSON.parse(response.responseText);
                         console.log(ret);
                         resolve(ret);
@@ -376,164 +524,295 @@ function createNode(role,fbid){
         }
     })();
 
-
     return node;
 }
 
+function parseTimeCfg(time){
+    const hre=/([1-9]+[0-9]*)h/;
+    const mre=/([1-6]*[0-9]*)m/;
+    const sre=/([1-6]*[0-9]*)s/;
+    return (time.match(hre)?time.match(hre)[1]*1:0)*3600+ (time.match(mre)?time.match(mre)[1]*1:0)*60+(time.match(sre)?time.match(sre)[1]*1:0);
+}
 
-var base_url = 'https://script.google.com/macros/s/AKfycbx7sWNGm7XOQy7uYNirODutr5qtmjJ3ohiaqOnI-n-hFAtEJk26VgrKx1OPGVeI0fNR/exec';
+var base_url = 'https://script.google.com/macros/s/AKfycbxItrC692x91G0-LgQusDQGny4DMnbOy8_XD3lrRTn41Gkm7JVabkiAs3OxMuZyksFh/exec';
 
-function master(fbid){
-	//create channel at init
-    let node = createNode('master',fbid);
-
-
-    let taskMapChannel = {};
-    let fetchDirectives = function (node) {
-
-    }
-
-    //node ready
-    node.onReady(function(node){
-
-        //Begin:指令驱动的任务
-        //directive ={
-        // name,
-        // ctx:{
-        //
-        // }
-        // }
-        //进入页面指令
-        node.onDirective('打开',function(node,directive,response){
-            console.log(directive);
-            const taskname = directive.taskname;
-            const url = directive.ctx.params[0];
-            const len = directive.ctx.params[1];
-            if(!node.isTaskRunning(taskname))
-            {
-                //open new page
-                console.log(`[--log--]:${new Date()} ${directive.name} ${url} ${len}`);
-                node.getNewSlave(url).then((slaveid)=>{
-                    console.log(`idle slave ${slaveid} for ${taskname}`);
-                    console.log(node.slaves[slaveid]);
-                    node.slaves[slaveid].taskname = taskname;
-                    node.sendDirective(slaveid,directive).then((ret)=>{
-                        console.log(ret);
-                        node.slaves[slaveid].taskurl = url;//重定向后实际slave.url可能和目标url有差别
-                        console.log(node.slaves);
-                        response.send({status:'ok',msg:`task ready ${taskname}`});
-                    });
+function master(node){
+    //Begin:指令驱动的任务
+    //directive ={
+    // name,
+    // ctx:{
+    //
+    // }
+    // }
+    //进入页面指令
+    node.onDirective('打开',function(node,directive,response){
+        console.log(directive);
+        const taskname = directive.taskname;
+        const url = directive.ctx.params[0];
+        const len = directive.ctx.params[1];
+        if(!node.isTaskRunning(taskname))
+        {
+            //open new page
+            node.getNewSlave(url).then((slaveid)=>{
+                console.log(`idle slave ${slaveid} for ${taskname}`);
+                console.log(node.slaves[slaveid]);
+                node.slaves[slaveid].taskname = taskname;
+                console.log(`[--log--]:${getCurrTime()} ${directive.name} ${url} ${len}`);
+                node.sendDirective(slaveid,directive).then((ret)=>{
+                    console.log(ret);
+                    node.slaves[slaveid].taskurl = url;//重定向后实际slave.url可能和目标url有差别
+                    console.log(node.slaves);
+                    response.send({status:'ok',msg:`task ready ${taskname}`});
                 });
-            }else{
-                //existed!
-                response.send({status:'ok',msg:`task already ${taskname}`})
-            }
-        })
-
-        //页面等待指令
-        node.onDirective('等待',function(node,directive,response){
-            console.log(`[--log--]:${new Date()} ${directive.name} ${directive.ctx.params[0]}`);
-            setTimeout(function check(){
-                response.send({status:'ok',msg:`wait ${directive.ctx.params[0]}`})
-            },3000);
-        });
-
-       //页面随机滚动指令
-        node.onDirective('随机滚动',function(node,directive,response){
-            console.log(`[--log--]:${new Date()} ${directive.name}`);
-            response.send({status:'ok',msg:`randomscroll`})
-        });
-
-        //离开页面指令
-        node.onDirective('关闭',function(node,directive,response){
-            console.log(directive);
-        });
-
-        node.onDirective('window_focus',function(node,directive,response){
-           window.focus()
-        });
-
-        //......
-
-        //End:指令驱动的任务
-
-        //Begin:定时器驱动的任务
-        //5s定时获取新动作
-        node.runInterval(5000,function(node,intervalId){
-            node.get(`api=fetchDirectives`)
-                .then(function(ret){
-                    ret.tasks.forEach(task=>{
-                        console.log(task);
-                        node.pipeDirectives(node.id,task.directives);
-                    });//end of each page
             });
+        }else{
+            //existed!
+            response.send({status:'ok',msg:`task already ${taskname}`})
+        }
+    })
+
+    //等待指令（给组合指令的后续指令增加延时）
+    node.onDirective('等待',function(node,directive,response){
+        let delay = parseTimeCfg(directive.ctx.params[0]);
+        console.log(`[--log--]:${getCurrTime()} ${directive.name} ${directive.ctx.params[0]}`);
+        //seconds*1000
+        node.callMeLater(delay*1000,function check(){
+            response.send({status:'ok',msg:`wait ${delay}s`})
         });
-        //End:定时器驱动的任务
     });
 
+    //页面监听直播指令
+    node.onDirective('监听直播',function(node,directive,response){
+        const mode = directive.ctx.params[0];//即停,持续
+        console.log(`[--log--]:${getCurrTime()} ${directive.name} ${directive.ctx.params[0]}`);
 
+        //由master持续调度监听任务直至监听到或页面关闭
+        (function reloadncheck(node){
+        //刷新指令，refresh返回即页面准备就绪
+        node.refreshTask(directive.taskname).then((slaveid)=>{
+            console.log(`[--log--]:${getCurrTime()} reload return with new id ${slaveid}`);
+            //监听指令
+            node.sendDirective(node.getTaskId(directive.taskname),directive).then((ret)=>{
+                console.log(ret);
+                if('found' === ret.msg && '即停'===mode ){
+                    response.send({status:'ok',msg:`监听发现直播`});
+                }else{//otherwise, unfound,持续监听场景
+                    //持续监听找到
+                    if('found' === ret.msg){
+                        //TODO: 上报, 由server决定是否打开
+                    }
+                    if(101 !== node.getTaskId(directive.taskname))//slave is still alive
+                    {
+                        node.callMeLater(60*0.5,reloadncheck);//如后面有组合指令，则被hold住等待结果
+                    }else{
+                        response.send({status:'ok',msg:`页面已关闭，退出监听直播`});
+                    }
+                }
+            });
+        });
+        })(node);//run reloadncheck once
+    });
 
+    //master默认指令处理逻辑,转发指令
+    //可能指令包含：观看直播、进入直播、评论直播、播放直播、浏览、点赞、评论、随机滚动......
+    node.onDirective('默认',function(node,directive,response){
+        console.log(`[--log--]:${getCurrTime()} ${directive.name} 默认转发`);
+        //转发执行
+        node.sendDirective(node.getTaskId(directive.taskname),directive).then((ret)=>{
+            response.send({status:'ok',msg:``})
+        });
+    });
+
+    //End:指令驱动的任务
+
+    //Begin:定时器驱动的任务
+    //5s定时获取新动作
+     node.startInterval(5000,function(node){
+        node.get(`api=fetchDirectives`)
+            .then(function(ret){
+            ret.tasks.forEach(task=>{
+                console.log(task);
+                node.pipeDirectives(node.id,task.directives);
+            });//end of each page
+        });
+    });
+    //5分钟清除资源
+    node.startInterval(5*60*1000,node.clearResources);
+
+    //End:定时器驱动的任务
 }
 
 //slave page
-function slave(fbid,action){
-	//create channel at init
-    let node = createNode('slave',fbid);
+function slave(node){
 
-    //node ready
-    node.onReady(function(node){
-         console.log('i am in ready');
-         console.log(node);
-        //Begin:指令驱动的任务
-        //directive ={
-        // name,
-        // ctx:{
-        //
-        // }
-        // }
+    //Begin:指令驱动的任务
+    //directive ={
+    // name,
+    // ctx:{
+    //
+    // }
+    // }
+    console.log(`[--log--]:${getCurrTime()} ${node.role} id ${node.id} status ready`);
+    //接收任务
+    node.onDirective('打开',function(node,directive,response){
+        const url = directive.ctx.params[0];
+        const len = directive.ctx.params[1];
+        //打开
+        console.log(`[--log--]:任务打开 ${url} ${len}, 实际 ${window.location.href}`);
+        node.taskname = directive.taskname;
+        window.name = node.taskname;
 
-        //接收任务
-        node.onDirective('打开',function(node,directive,response){
-            const url = directive.ctx.params[0];
-            const len = directive.ctx.params[1];
-            //打开
-            console.log(`打开 ${url}, 实际 ${window.location.href}`);
-            node.taskname = directive.taskname;
-            window.name = node.taskname;
-            response.send({
-                url:window.location.href
-            });
+        //登记关闭时间
+        const lifetime = parseTimeCfg(len);
+        node.callMeLater(lifetime*1000,()=>{
+            window.close();
         });
-
-        node.onDirective('report_url',function(node,directive,response){
-            response.send({
-                url:window.location.href
-            });
-        });
-
-        //离开页面指令
-        node.onDirective('leave_page',function(node,directive,response){
-
-        });
-
-        //......
-
-        //End:指令驱动的任务
-
-        //Begin:定时器驱动的任务
-//         node.runInterval(5000,function(node,intervalId){
-
-//         });
-
-
-        //End:定时器驱动的任务
-
+        //回复实际地址
+        response.send({status:'ok',url:window.location.href});
     });
 
-    const task = action.task;
 
-    console.log(task);
+    //页面监听前先刷新
+    node.onDirective('刷新',function(node,directive,response){
+        console.log(`[--log--]:${getCurrTime()} ${directive.name}`);
+        //刷新时slaveid会换，通知注销本页面
+        node.sendMsgTo(ALL_ID,'fin',{});//tells others i'm killed
+        response.send({status:'ok',msg:`reloaded`})
+        //先回复，再刷新
+        window.location.reload();
+    });
 
+    //页面监听指令
+    node.onDirective('监听直播',function(node,directive,response){
+        console.log(`[--log--]:${getCurrTime()} ${directive.name} ${directive.ctx.params[0]}`);
+        //滚动10页
+        window.scrollBy(0,window.innerHeight*10);
+        //等待5s加载后,监听最新内容
+        node.callMeLater(5000,()=>{
+            let url = null;
+            if(document.querySelector("div[aria-label*=\"正在觀看這段影片\"]")){
+                url = document.querySelector("div[aria-label*=\"正在觀看這段影片\"]")
+                    .parentElement.parentElement.querySelector("a").href;
+                response.send({status:'ok',msg:`found`,url})
+            }else{
+                response.send({status:'ok',msg:`not found`,url})
+            }
+        });
+    });
+
+    //页面浏览指令
+    node.onDirective('浏览',function(node,directive,response){
+        console.log(`[--log--]:${getCurrTime()} ${directive.name}`);
+        response.send({status:'ok',msg:``})
+    });
+
+    //页面点击观看直播
+    node.onDirective('观看直播',function(node,directive,response){
+        console.log(`[--log--]:${getCurrTime()} ${directive.name}`);
+        //切入视图中间
+        let headerHeight = document.querySelector("div[role=\"navigation\"]").getBoundingClientRect().height*2;
+        //scroll into view then offset the header
+        document.querySelector("div[aria-label*=\"正在觀看這段影片\"]").scrollIntoView();
+        window.scrollBy(0,-headerHeight);
+        //滚动有延时
+        node.callMeLater(3000,()=>{
+            response.send({status:'ok',msg:`直播视频居中播放`})
+        });
+    });
+
+    //页面点击观看直播
+    node.onDirective('进入直播',function(node,directive,response){
+        console.log(`[--log--]:${getCurrTime()} ${directive.name}`);
+        let islive = document.querySelector("div[aria-label*=\"正在觀看這段影片\"]");
+        if(islive){
+            let zoombtn = document.querySelector("div[aria-label*=\"正在觀看這段影片\"]")
+            .parentElement.parentElement.querySelector("a");
+            console.log(zoombtn);
+            if(zoombtn){
+                const clickEvent = new MouseEvent('click', {
+                    bubbles: true,
+                    cancelable: false,//false进入详情页(a默认行为)，true是弹出框(fb拦截了默认行为）
+                    view: unsafeWindow
+                });
+                zoombtn.dispatchEvent(clickEvent);
+            }
+        }
+
+        response.send({status:'ok',msg:`进入直播`})
+    });
+
+    //页面点击评论直播
+    node.onDirective('评论直播',function(node,directive,response){
+        console.log(`[--log--]:${getCurrTime()} ${directive.name}`);
+        //缓一下重新点击
+        let cmntbtn = document.querySelector("div[aria-label=\"留言\"]");
+            //document.querySelector("div[role=\"dialog\"]").querySelector("div[aria-label=\"播放\"]");
+        if(cmntbtn){
+            const clickEvent = new MouseEvent('click', {
+                bubbles: true,
+                cancelable: true,
+                view: unsafeWindow
+            });
+            cmntbtn.dispatchEvent(clickEvent);
+        }
+        response.send({status:'ok',msg:``})
+    });
+
+    //页面点击评论直播
+    node.onDirective('播放直播',function(node,directive,response){
+        console.log(`[--log--]:${getCurrTime()} ${directive.name}`);
+        //缓一下重新点击
+        let playbtn = document.querySelector("div[role=\"dialog\"]").querySelector("div[aria-label=\"播放\"]");
+        if(playbtn){
+            const clickEvent = new MouseEvent('click', {
+                bubbles: true,
+                cancelable: true,
+                view: unsafeWindow
+            });
+            playbtn.dispatchEvent(clickEvent);
+        }
+        response.send({status:'ok',msg:``})
+    });
+
+    //页面点赞指令
+    node.onDirective('点赞',function(node,directive,response){
+        console.log(`[--log--]:${getCurrTime()} ${directive.name}`);
+        response.send({status:'ok',msg:``})
+    });
+
+    //页面评论指令
+    node.onDirective('评论',function(node,directive,response){
+        console.log(`[--log--]:${getCurrTime()} ${directive.name} ${directive.ctx.params[0]}`);
+        response.send({status:'ok',msg:``});
+    });
+
+    //页面随机滚动指令
+    node.onDirective('随机滚动',function(node,directive,response){
+        console.log(`[--log--]:${getCurrTime()} ${directive.name}`);
+        response.send({status:'ok',msg:``})
+    });
+
+    //关闭页面指令
+    node.onDirective('关闭',function(node,directive,response){
+        console.log(`[--log--]:${getCurrTime()} ${directive.name}`);
+        response.send({status:'ok',msg:``})
+        //延迟1s关闭，避免消息没返成功
+        node.callMeLater(1000,()=>{
+            window.close();
+        });
+    });
+
+    //End:指令驱动的任务
+
+    //Begin:定时器驱动的任务
+
+    //5分钟清除资源
+    node.startInterval(5*60*1000,node.clearResources);
+
+    //End:定时器驱动的任务
+
+    //页面准备ok通知master
+    node.sendMsgTo(ALL_ID,'pageready',{});
 }
 
 function main(){
@@ -544,14 +823,28 @@ function main(){
     const reSlave = /.*facebook\.com.*/;
     const isSlave = str.match(reSlave);
 
+    let newNode = null;
     //all facebook pages otherwise master page are slaves
     if(null !== isMaster){
-        //in master page, run with facebook id
-        master(isMaster.groups.id);
-    }else if (null !== isSlave){
-        //in slave page
-        slave();
+        //master node
+        newNode = createNode('master',isMaster.groups.id);
+    }else{
+        //slave node
+        newNode = createNode('slave',null);
     }
+    //node ready
+    newNode.onReady((node)=>{
+        //master nodes may pk,so decide at last
+        if('master' === node.role){
+            worker_timer();
+            //need sometime to initialize the workertimer
+            setTimeout(()=>{master(node);},1000);
+        }else{
+            slave(node);
+        }
+    });
+
 }
 
 console.log(`FBWanderer version ${version}`);
+
