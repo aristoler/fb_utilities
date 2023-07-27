@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         FBWanderer
+// @name         FBWanderer Test
 // @namespace    http://tampermonkey.net/
 // @version      1.0
 // @description  try to take over the world!
@@ -11,6 +11,9 @@
 // @connect      githubusercontent.com
 // @grant        GM_xmlhttpRequest
 // @grant        GM_download
+// @grant        window.close
+// @grant        window.focus
+
 // ==/UserScript==
 
 (function() {
