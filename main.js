@@ -1,3 +1,4 @@
+
 let version = '0.0.3';
 const ALL_ID = -1;
 
@@ -26,6 +27,8 @@ function worker_timer(){
                             timerid: evt.data.timerid
                         });
                     },evt.data.delay);
+                }else if('doget' === evt.data.msg){
+
                 }
             });
         };
@@ -446,7 +449,6 @@ function createNode(role,fbid){
                 pending.createdtime = Date.now();
                 return pending;
             })();
-
             const reloaddirective = {
                 name:'刷新',
                 taskname: taskname,
@@ -466,9 +468,8 @@ function createNode(role,fbid){
     //封装网络get接口
     node.get = (function(){
         return function(uri){
-
-            console.log(`[--log--]:${getCurrTime()} ${node.role} id ${node.id} getting ?id=${fbid}&${uri}`);
             return new Promise((resolve,reject)=>{
+                console.log(`[--log--]:${getCurrTime()} ${node.role} id ${node.id} getting ?id=${fbid}&${uri}`);
                 GM_xmlhttpRequest({
                     method: "GET",
                     url: `${base_url}?id=${node.fbid}&${uri}`,
@@ -534,6 +535,18 @@ function parseTimeCfg(time){
     return (time.match(hre)?time.match(hre)[1]*1:0)*3600+ (time.match(mre)?time.match(mre)[1]*1:0)*60+(time.match(sre)?time.match(sre)[1]*1:0);
 }
 
+function parseDirectives(taskname,directiveStr){
+return directiveStr.split('=>').map(d=>{
+            return {
+              taskname:taskname,
+              name:d.trim().match(/(.+)\(.*/)[1],
+              ctx:{
+                params:d.trim().match(/.+\((.*)\)/)[1].split(",")
+              }
+            }
+          });
+}
+
 var base_url = 'https://script.google.com/macros/s/AKfycbxItrC692x91G0-LgQusDQGny4DMnbOy8_XD3lrRTn41Gkm7JVabkiAs3OxMuZyksFh/exec';
 
 function master(node){
@@ -581,19 +594,34 @@ function master(node){
         });
     });
 
+    //刷新指令
+    node.onDirective('刷新',function(node,directive,response){
+        console.log(`[--log--]:${getCurrTime()} ${directive.name}`);
+        //刷新指令，refresh返回即页面准备就绪
+        node.refreshTask(directive.taskname).then((slaveid)=>{
+            console.log(`[--log--]:${getCurrTime()} reload done with new id ${slaveid}`);
+            response.send({status:'ok',msg:` reload done with new id ${slaveid} `});
+        });
+    });
+
+    //发现指令
+    node.onDirective('发现',function(node,directive,response){
+        console.log(`[--log--]:${getCurrTime()} ${directive.name}`);
+        //目前就是结果透传，可能存在上报逻辑
+        node.sendDirective(node.getTaskId(directive.taskname),directive).then((ret)=>{
+            response.send(ret);
+        });
+    });
+
     //页面监听直播指令
     node.onDirective('监听直播',function(node,directive,response){
         const mode = directive.ctx.params[0];//即停,持续
         console.log(`[--log--]:${getCurrTime()} ${directive.name} ${directive.ctx.params[0]}`);
 
         //由master持续调度监听任务直至监听到或页面关闭
-        (function reloadncheck(node){
-        //刷新指令，refresh返回即页面准备就绪
-        node.refreshTask(directive.taskname).then((slaveid)=>{
-            console.log(`[--log--]:${getCurrTime()} reload return with new id ${slaveid}`);
-            //监听指令
-            node.sendDirective(node.getTaskId(directive.taskname),directive).then((ret)=>{
-                console.log(ret);
+        //监听=发现+刷新指令的顺序执行循环（发给master调度）
+        (function reloadnfind(){
+            node.pipeDirectives(node.id,parseDirectives(directive.taskname,'刷新()=>发现()')).then((ret)=>{
                 if('found' === ret.msg && '即停'===mode ){
                     response.send({status:'ok',msg:`监听发现直播`});
                 }else{//otherwise, unfound,持续监听场景
@@ -603,18 +631,17 @@ function master(node){
                     }
                     if(101 !== node.getTaskId(directive.taskname))//slave is still alive
                     {
-                        node.callMeLater(60*0.5,reloadncheck);//如后面有组合指令，则被hold住等待结果
+                        node.callMeLater(1*60*1000,reloadnfind);//如后面有组合指令，则被hold住等待结果
                     }else{
                         response.send({status:'ok',msg:`页面已关闭，退出监听直播`});
                     }
                 }
-            });
-        });
-        })(node);//run reloadncheck once
+            })
+        })();
     });
 
     //master默认指令处理逻辑,转发指令
-    //可能指令包含：观看直播、进入直播、评论直播、播放直播、浏览、点赞、评论、随机滚动......
+    //可能指令包含：发现、观看直播、进入直播、评论直播、播放直播、浏览、点赞、评论、随机滚动......
     node.onDirective('默认',function(node,directive,response){
         console.log(`[--log--]:${getCurrTime()} ${directive.name} 默认转发`);
         //转发执行
@@ -631,7 +658,7 @@ function master(node){
         node.get(`api=fetchDirectives`)
             .then(function(ret){
             ret.tasks.forEach(task=>{
-                console.log(task);
+                console.log(task.taskname);
                 node.pipeDirectives(node.id,task.directives);
             });//end of each page
         });
@@ -683,12 +710,12 @@ function slave(node){
     });
 
     //页面监听指令
-    node.onDirective('监听直播',function(node,directive,response){
-        console.log(`[--log--]:${getCurrTime()} ${directive.name} ${directive.ctx.params[0]}`);
+    node.onDirective('发现',function(node,directive,response){
+        console.log(`[--log--]:${getCurrTime()} ${directive.name}`);
         //滚动10页
         window.scrollBy(0,window.innerHeight*10);
         //等待5s加载后,监听最新内容
-        node.callMeLater(5000,()=>{
+        node.callMeLater(5*1000,()=>{
             let url = null;
             if(document.querySelector("div[aria-label*=\"正在觀看這段影片\"]")){
                 url = document.querySelector("div[aria-label*=\"正在觀看這段影片\"]")
@@ -715,7 +742,7 @@ function slave(node){
         document.querySelector("div[aria-label*=\"正在觀看這段影片\"]").scrollIntoView();
         window.scrollBy(0,-headerHeight);
         //滚动有延时
-        node.callMeLater(3000,()=>{
+        node.callMeLater(3*1000,()=>{
             response.send({status:'ok',msg:`直播视频居中播放`})
         });
     });
@@ -762,15 +789,15 @@ function slave(node){
     node.onDirective('播放直播',function(node,directive,response){
         console.log(`[--log--]:${getCurrTime()} ${directive.name}`);
         //缓一下重新点击
-        let playbtn = document.querySelector("div[role=\"dialog\"]").querySelector("div[aria-label=\"播放\"]");
-        if(playbtn){
-            const clickEvent = new MouseEvent('click', {
-                bubbles: true,
-                cancelable: true,
-                view: unsafeWindow
-            });
-            playbtn.dispatchEvent(clickEvent);
-        }
+        // let playbtn = document.querySelector("div[role=\"dialog\"]").querySelector("div[aria-label=\"播放\"]");
+        // if(playbtn){
+        //     const clickEvent = new MouseEvent('click', {
+        //         bubbles: true,
+        //         cancelable: true,
+        //         view: unsafeWindow
+        //     });
+        //     playbtn.dispatchEvent(clickEvent);
+        // }
         response.send({status:'ok',msg:``})
     });
 
@@ -783,6 +810,15 @@ function slave(node){
     //页面评论指令
     node.onDirective('评论',function(node,directive,response){
         console.log(`[--log--]:${getCurrTime()} ${directive.name} ${directive.ctx.params[0]}`);
+        let comment = directive.ctx.params[0];
+        let editArea = document.querySelector("div[role=\"dialog\"] div[role=\"textbox\"]");
+        let sendbtn = document.querySelector("div[role=\"dialog\"] div[aria-label=\"留言\"]")
+
+        editArea.focus();
+        document.execCommand('insertText', false, `${comment}`);
+        node.callMeLater(1000,(node)=>{
+            sendbtn.click();
+        });
         response.send({status:'ok',msg:``});
     });
 
