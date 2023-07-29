@@ -492,10 +492,15 @@ function createNode(role,fbid){
     })();
 
      //封装网络post接口
+    node.pendingrequests=[];
     node.post = (function(){
         return function(uri,data){
             return new Promise((resolve,reject)=>{
                 console.log(`[--log--]:${getCurrTime()} ${node.role} id ${node.id} posting ?id=${fbid}&${uri}`);
+                if(node.pendingrequests.length> 5){
+                    window.focus(); //网络事件卡主，需要激活窗口
+                }
+                node.pendingrequests.push(1);
                 GM_xmlhttpRequest({
                     method: "POST",
                     url: `${base_url}?id=${node.fbid}&${uri}`,
@@ -506,6 +511,7 @@ function createNode(role,fbid){
                     nocache: true,
                     timeout:30000,
                     onload: function(response) {
+                        node.pendingrequests.shift();
                         if (response.status !== 200) {
                             console.log(`[--log--]:${getCurrTime()} ${node.role} id ${node.id} get res err ${response.status}`);
                             reject(uri);
@@ -883,4 +889,5 @@ function main(){
 }
 
 console.log(`FBWanderer version ${version}`);
+
 
