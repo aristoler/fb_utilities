@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         FBWanderer Test
+// @name         FBWanderer
 // @namespace    http://tampermonkey.net/
 // @version      1.0
 // @description  try to take over the world!
