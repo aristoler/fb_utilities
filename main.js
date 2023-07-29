@@ -1,5 +1,5 @@
 
-let version = '0.1.0';
+let version = '1.0';
 const ALL_ID = -1;
 
 function worker_timer(){
