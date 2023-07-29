@@ -890,4 +890,4 @@ function main(){
 
 console.log(`FBWanderer version ${version}`);
 
-
+main();
