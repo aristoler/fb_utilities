@@ -11,6 +11,9 @@
 // @connect      githubusercontent.com
 // @grant        GM_xmlhttpRequest
 // @grant        GM_download
+// @updateURL    https://raw.githubusercontent.com/aristoler/fb_utilities/main/tampermonkey.js
+// @downloadURL  https://raw.githubusercontent.com/aristoler/fb_utilities/main/tampermonkey.js
+// @grant        GM_getTabs
 // @grant        window.close
 // @grant        window.focus
 
