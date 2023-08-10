@@ -1,5 +1,4 @@
-
-let version = '1.0';
+let version = '0.1.0';
 const ALL_ID = -1;
 
 function worker_timer(){
@@ -69,7 +68,10 @@ function dateFormat (date,format) { //author: meizz
 }
 
 function getCurrTime(){
-  return dateFormat(new Date,"yyyy-M-d hh:mm:ss");
+  return dateFormat(new Date,"yyyy-MM-dd hh:mm:ss");
+}
+function getCurrDate(){
+  return dateFormat(new Date,"yyyy-MM-dd");
 }
 
 function createNode(role,fbid){
@@ -111,7 +113,7 @@ function createNode(role,fbid){
         return function(url){
             return new Promise((resolve,reject)=>{
                 // const currtime = Date.now();
-                window.open(url,"_blank");
+                window.open(url.substring(0,4)!='http'?'https://'+url:url,"_blank");
                 node.slavespipe.push(resolve);
             })
         }
@@ -321,10 +323,11 @@ function createNode(role,fbid){
     node.pipeDirectives = (function(){
         return function (id,directives) {
             return directives.map(directive=>{
-                 return ()=>{//delay the send
+                 return (ret)=>{//delay the send
+                     directive.prev = ret; //pipe preve rets
                      return node.sendDirective(id,directive);
                  }
-             }).reduce((promise, cur) => promise.then(cur), Promise.resolve())
+             }).reduce((promise, cur) => promise.then(cur), Promise.resolve({}))
         }
     })();
 
@@ -461,6 +464,41 @@ function createNode(role,fbid){
         }
     })();
 
+    //点击事件，直接dom.click不行
+    node.click = (function(){
+        return function(dom){
+            const clickEvent = new MouseEvent('click', {
+                bubbles: true,
+                cancelable: true,
+                view: unsafeWindow
+            });
+            dom.focus();
+            dom.dispatchEvent(clickEvent);
+        }
+    })();
+
+    //操作并等待
+    node.actThenWait = (function(){
+        return function(maxTries,actcb,waitcb){
+            let countdown = maxTries;
+            return new Promise((resolve,reject)=>{
+                (function attempt(){
+                    new Promise((resolve1,reject1)=>{
+                        actcb(resolve1);
+                    }).then(()=>{
+                        if(waitcb()){
+                            resolve(true);
+                        }else if(-1==maxTries || --countdown > 0){
+                            node.callMeLater(2000,attempt);
+                        }else{
+                            resolve(false);
+                        }
+                    });
+                })();
+            });
+        }
+    })();
+
 
     //封装网络get接口
     node.get = (function(){
@@ -498,7 +536,8 @@ function createNode(role,fbid){
             return new Promise((resolve,reject)=>{
                 console.log(`[--log--]:${getCurrTime()} ${node.role} id ${node.id} posting ?id=${fbid}&${uri}`);
                 if(node.pendingrequests.length> 5){
-                    window.focus(); //网络事件卡主，需要激活窗口
+                    // window.focus(); //网络事件卡主，需要激活窗口
+                    node.pendingrequests = [];
                 }
                 node.pendingrequests.push(1);
                 GM_xmlhttpRequest({
@@ -531,10 +570,17 @@ function createNode(role,fbid){
 }
 
 function parseTimeCfg(time){
+    const [mintime,maxtime] = time.split('-');
     const hre=/([1-9]+[0-9]*)h/;
     const mre=/([1-9]+[0-9]*)m/;
     const sre=/([1-9]+[0-9]*)s/;
-    return (time.match(hre)?time.match(hre)[1]*1:0)*3600+ (time.match(mre)?time.match(mre)[1]*1:0)*60+(time.match(sre)?time.match(sre)[1]*1:0);
+
+    let min = (mintime.match(hre)?mintime.match(hre)[1]*1:0)*3600+ (mintime.match(mre)?mintime.match(mre)[1]*1:0)*60+(mintime.match(sre)?mintime.match(sre)[1]*1:0);
+    let max = min;
+    if(maxtime){
+      max = (maxtime.match(hre)?maxtime.match(hre)[1]*1:0)*3600+ (maxtime.match(mre)?maxtime.match(mre)[1]*1:0)*60+(maxtime.match(sre)?maxtime.match(sre)[1]*1:0);
+    }
+    return Math.floor(Math.random() * (max - min)) + min;
 }
 
 function parseDirectives(taskname,directiveStr){
@@ -549,7 +595,217 @@ return directiveStr.split('=>').map(d=>{
           });
 }
 
-var base_url = 'https://script.google.com/macros/s/AKfycbyuzuix1V7fu6Zg3oCCKffXudk1Ix7OOgas-3up7PE9Ze2wnva2jjw90WDGInM1-jjq/exec';
+function createScraper(n){
+    const scraper = {};
+    const node = n;
+    //直播列表翻页
+    scraper.showAllVideosPromise =(function(){
+        return function (max) {
+            return new Promise((resolve,reject)=>{
+                //直播列表页翻到底
+                let counts = 0;
+                let checkN = 2;
+                node.callMeLater(3000,function scroll(){
+                    let scrollPages = 2+Math.random()*3;
+                    let delayRandom = 3+Math.random()*7;
+                    let parent = document.querySelector("a>img").parentElement.parentElement.parentElement.parentElement;
+                    if(parent.childNodes.length>counts|| checkN-->0 ){
+                        console.log(`new num ${parent.childNodes.length - counts}`);
+                        counts = parent.childNodes.length;
+                        //next page
+                        if(counts<max){
+                            //parent.childNodes[parent.childNodes.length-1].scrollIntoView();
+                            window.scrollBy(0,window.innerHeight*scrollPages);
+                            node.callMeLater(delayRandom*1000,scroll);
+                        }else{
+                            console.log(`exit at num ${counts}`);
+                            resolve(counts);
+                        }
+                    }else{
+                        console.log(`total num ${counts}`);
+                        resolve(counts);
+                    }
+                });
+            })//end of promise
+        }
+    })();
+    //获取直播列表信息
+    scraper.getAllVideos = (()=>{
+        return function (){
+            let videos=[...document.querySelectorAll("a>img")].map((node)=>{
+                //header
+                let name = document.querySelector('div[role=\"main\"] h1').textContent;
+                let likes = document.querySelector('div[role=\"main\"] span>a:nth-child(1)').textContent;
+                let followers = document.querySelector('div[role=\"main\"] span>a:nth-child(2)').textContent;
+                //image
+                let href = window.location.host+node.parentElement.getAttribute('href');
+                let len = node.parentElement.querySelector("span").textContent;
+                //title
+                let title = node.parentElement.parentElement.childNodes[1].textContent;
+                //info
+                let s = node.parentElement.parentElement.childNodes[2].textContent.split('·');
+                let plays = s[0].trim();
+                let time = s[1].trim();
+                let updatedat = getCurrDate();
+                return [name,likes,followers,href,len,title,plays,time,updatedat];
+            });
+            return videos;
+        }
+    })();
+
+    //评论翻页
+    scraper.showAllCommentsPromise = (()=>{
+        return function (){
+            return new Promise((resolve,reject)=>{
+                let counts = 0;
+                node.callMeLater(3000,function scroll(){
+                    let delayRandom = 3+Math.random()*7;
+                    let nums = document.querySelectorAll("div[role=\"complementary\"] div[style=\"height: auto;\"]>ul>li").length;
+                    console.log(`new num ${nums - counts}`);
+                    counts = nums;
+                    //next page
+                    let morebtn = document.querySelector("div[role=\"complementary\"] div[role=\"button\"]>span>span[dir=\"auto\"]");
+                    if(!!morebtn){
+                        morebtn.scrollIntoView();
+                        morebtn.click();
+                        node.callMeLater(delayRandom*1000,scroll);
+                    }else{
+                        console.log(`total num ${counts}`);
+                        resolve(counts);
+                    }
+                });
+            });//end of promise
+        }// end of function
+    })();
+
+
+    //获取评论列表信息
+    scraper.getAllComments = (()=>{
+        return function (){
+            let timedom = document.querySelector("div[role=\"complementary\"] span>span>span>span>a[role=\"link\"]>span" );
+            // let posttime = [...timedom.querySelectorAll("span")].filter((d)=>{
+            // 	return !(d.getBoundingClientRect().top > timedom.getBoundingClientRect().bottom
+            // 	|| d.getBoundingClientRect().left > timedom.getBoundingClientRect().right
+            // 	|| d.getBoundingClientRect().width == timedom.getBoundingClientRect().width)
+            // })
+            // .sort((a,b)=> a.getBoundingClientRect().left>b.getBoundingClientRect().left?1:-1)
+            // .map(n=>n.textContent).join('');
+            let hiddendomId = timedom.querySelector("span[aria-labelledby]").getAttribute('aria-labelledby');
+            let posttime = document.querySelector(`span[id=\"${hiddendomId}\"]`).textContent;
+
+            let comments=[...document.querySelectorAll("div[role=\"complementary\"] div[style=\"height: auto;\"]>ul>li")]
+            .map((dom)=>{
+
+                //帖子账号
+                let name= document.querySelector("div[role=\"complementary\"] h2 strong" ).textContent;
+                //帖子时间
+                let time = posttime;
+                //帖子链接
+                let href = window.location.href;
+                //评论
+                //头像
+                let avatar = dom.querySelector("svg g image").getAttribute("xlink:href");
+                //fburl
+                let m= dom.querySelectorAll("a")[0].href.match(/(.+)[&\?]comment_id=([^&]+)&.*/);
+                let fburl = m[1];
+                let commentid=m[2];
+                //名称
+                let username = dom.querySelectorAll("a")[1].textContent;
+                //评论
+                let comment = dom.querySelector("span[dir=\"auto\"]>div" )?dom.querySelector("span[dir=\"auto\"]>div" ).textContent:'动图';
+                //评论时间
+                let commenttime =dom.querySelector("ul>li:last-child" ).textContent;
+                // dom.querySelector("span>div[role=\"button\"]").textContent;
+                let updatedat = getCurrDate();
+                return [name,time,href,avatar,username,fburl,commentid,comment,commenttime,updatedat];
+            });
+            return comments;
+        }
+    })();
+
+    //点赞翻页
+    scraper.showAllLikesPromise = (()=>{
+        return function (){
+            return new Promise((resolve,reject)=>{
+                let showbtn = document.querySelector("div[role=\"complementary\"] span[role=\"toolbar\"]" ).parentElement.querySelector("div>span>div[role=\"button\"]");
+                //点赞框未弹出
+                if(!document.querySelector("div[role=\"dialog\"] div[role=\"tablist\"]")){
+                    showbtn.click();
+                }
+                //点赞翻页
+                let counts = 0;
+                let checkN = 2;
+                node.callMeLater(3000,function scroll(){
+                    let delayRandom = 3+Math.random()*7;
+                    //点赞区
+                    let likeZone = document.querySelector("div[role=\"dialog\"] div[role=\"tablist\"]")
+                    .parentElement.parentElement.parentElement.parentElement.parentElement.lastChild;
+                    //点赞数
+                    let likes = likeZone.querySelectorAll("div[data-visualcompletion=\"ignore-dynamic\"]");
+                    //next page
+                    if(likes.length>counts||checkN-->0){
+                        console.log(`new likes ${likes.length - counts}`);
+                        counts = likes.length;
+                        likes[likes.length-1].scrollIntoView();
+                        node.callMeLater(delayRandom*1000,scroll);
+                    }else{
+                        console.log(`total likes ${counts}`);
+                        resolve(counts);
+                    }
+                });
+            });//end of promise
+        }// end of function
+    })();
+
+    //获取点赞列表
+    scraper.getAllLikes = (()=>{
+        return function (){
+            let timedom = document.querySelector("div[role=\"complementary\"] span>span>span>span>a[role=\"link\"]>span" );
+            // let posttime = [...timedom.querySelectorAll("span")].filter((d)=>{
+            // 	return !(d.getBoundingClientRect().top > timedom.getBoundingClientRect().bottom
+            // 	|| d.getBoundingClientRect().left > timedom.getBoundingClientRect().right
+            // 	|| d.getBoundingClientRect().width == timedom.getBoundingClientRect().width)
+            // })
+            // .sort((a,b)=> a.getBoundingClientRect().left>b.getBoundingClientRect().left?1:-1)
+            // .map(n=>n.textContent).join('');
+            let hiddendomId = timedom.querySelector("span[aria-labelledby]").getAttribute('aria-labelledby');
+            let posttime = document.querySelector(`span[id=\"${hiddendomId}\"]`).textContent;
+
+            let likeZone = document.querySelector("div[role=\"dialog\"] div[role=\"tablist\"]")
+            .parentElement.parentElement.parentElement.parentElement.parentElement.childNodes[1];
+            let likes = likeZone.querySelectorAll("div[data-visualcompletion=\"ignore-dynamic\"]");
+            return [...likes].map((dom)=>{
+                //帖子账号
+                let name= document.querySelector("div[role=\"complementary\"] h2 strong" ).textContent;
+                //帖子时间
+                let time = posttime;
+                //帖子链接
+                let href = window.location.href;
+                //评论
+                //头像
+                let avatar = dom.querySelector("svg g image").getAttribute("xlink:href");
+                //fburl
+                let m= dom.querySelectorAll("a")[0].href.match(/([^&]+)[&\?].*/);
+                let fburl = m[1];
+                let fbid = fburl.match(/(\d{8,})/)?fburl.match(/(\d{8,})/)[0]:fburl.split('/').pop();
+                let commentid = `${fbid}@${href.split('/').pop()}`;//每个帖子的点赞不同
+                //名称
+                let username = dom.querySelectorAll("a")[1].textContent;
+                //评论
+                let comment = 'like';
+                //帖子时间
+                let commenttime ='';
+                let updatedat = getCurrDate();
+                return [name,time,href,avatar,username,fburl,commentid,comment,commenttime,updatedat];
+            });
+        }
+    })();
+
+    return scraper;
+}
+
+
+var base_url = 'https://script.google.com/macros/s/AKfycbxUl2iiGGF-Q84UeJjkzdys4Q8zw38e1vs0ByhEpWXS2MvPUU4MxM0faqTNVZeU528/exec';
 
 function master(node){
     //Begin:指令驱动的任务
@@ -561,7 +817,7 @@ function master(node){
     // }
     //进入页面指令
     node.onDirective('打开',function(node,directive,response){
-        console.log(directive);
+        console.log(`[--dir--]:${getCurrTime()} ${directive.name}  ${directive.ctx.params[0]}  ${directive.ctx.params[1]}`);
         const taskname = directive.taskname;
         const url = directive.ctx.params[0];
         const len = directive.ctx.params[1];
@@ -606,15 +862,6 @@ function master(node){
         });
     });
 
-    //发现指令
-    node.onDirective('发现',function(node,directive,response){
-        console.log(`[--dir--]:${getCurrTime()} ${directive.name}`);
-        //目前就是结果透传，可能存在上报逻辑
-        node.sendDirective(node.getTaskId(directive.taskname),directive).then((ret)=>{
-            response.send(ret);
-        });
-    });
-
     //页面监听直播指令
     node.onDirective('监听直播',function(node,directive,response){
         const mode = directive.ctx.params[0];//即停,持续
@@ -646,13 +893,43 @@ function master(node){
         })();
     });
 
+    //上报指令
+    node.onDirective('上报',function(node,directive,response){
+        console.log(`[--dir--]:${getCurrTime()} ${directive.name} ${directive.ctx.params[0]} ${directive.ctx.params[1]} ${directive.ctx.params[2]}`);
+        const sheetname = directive.ctx.params[0];
+        const mode = directive.ctx.params[1]?directive.ctx.params[1]:'追加';//追加,去重
+        const distinct= directive.ctx.params[2];
+        node.post(`api=reportData`,{sheetname,mode,distinct,entries:directive.prev.data,
+                                    varsource:directive.varsource,
+                                    variables:directive.variables,
+                                    atdone:directive.atdone})
+            .then(function(ret){
+            response.send({status:'ok',msg:``});
+        });
+    });
+
+    //下一个指令
+    node.onDirective('下一个',function(node,directive,response){
+        console.log(`[--dir--]:${getCurrTime()} ${directive.name} ${directive.ctx.params[0]} ${directive.ctx.params[1]} ${directive.ctx.params[2]}`);
+        const delay = directive.ctx.params[0];
+        const sheetname = directive.ctx.params[1];
+        const filter= directive.ctx.params[2];
+        const atfetch = directive.ctx.params[3];
+        const atdone = directive.ctx.params[4];
+        node.post(`api=nextInLoop`,{taskname:directive.taskname,delay,sheetname,filter,atfetch,atdone})
+            .then(function(ret){
+            console.log(ret);
+            response.send({status:'ok',msg:``});
+        });
+    });
+
     //master默认指令处理逻辑,转发指令
     //可能指令包含：发现、观看直播、进入直播、评论直播、播放直播、浏览、点赞、评论、随机滚动......
     node.onDirective('默认',function(node,directive,response){
         console.log(`[--dir--]:${getCurrTime()} ${directive.name} 默认转发`);
         //转发执行
         node.sendDirective(node.getTaskId(directive.taskname),directive).then((ret)=>{
-            response.send({status:'ok',msg:``})
+            response.send(ret)
         });
     });
 
@@ -832,6 +1109,53 @@ function slave(node){
     node.onDirective('随机滚动',function(node,directive,response){
         console.log(`[--dir--]:${getCurrTime()} ${directive.name}`);
         response.send({status:'ok',msg:``})
+    });
+
+    //进入直播列表
+    node.onDirective('进入直播列表',function(node,directive,response){
+        console.log(`[--dir--]:${getCurrTime()} ${directive.name}`);
+        node.actThenWait(-1,(done)=>{//act
+            if(0===document.querySelectorAll("div[role=\"menu\"] a[role=\"menuitemradio\"]").length){
+                document.querySelector("div[aria-haspopup=\"menu\"]").click();
+            }
+            done();
+        },()=>{//wait
+            return document.querySelectorAll("div[role=\"menu\"] a[role=\"menuitemradio\"]").length>0?true:false;
+        }).then((ret)=>{
+            document.querySelectorAll("div[role=\"menu\"] a[role=\"menuitemradio\"]").forEach((dom)=>{
+                if(dom.textContent.indexOf("直播")==0)
+                {
+                    dom.click();
+                    node.callMeLater(3000,()=>{response.send({status:'ok',msg:``});});//等加载
+                }
+            });
+        });
+    });
+
+    //获取直播列表
+    node.onDirective('获取直播列表',function(node,directive,response){
+        console.log(`[--dir--]:${getCurrTime()} ${directive.name} ${directive.ctx.params[0]}`);
+        const max = Number(directive.ctx.params[0]);
+        const scraper = createScraper(node);
+        scraper.showAllVideosPromise(max).then((nums)=>{
+            const videos = scraper.getAllVideos();
+            // console.log(videos);
+            response.send({status:'ok',msg:``,data:videos})
+        });
+    });
+
+    //获取评论列表(含赞)
+    node.onDirective('获取评论列表',function(node,directive,response){
+        console.log(`[--dir--]:${getCurrTime()} ${directive.name}`);
+        const scraper = createScraper(node);
+        scraper.showAllCommentsPromise().then((nums)=>{
+            let comments = scraper.getAllComments();
+            scraper.showAllLikesPromise().then((nums)=>{
+                let likes = scraper.getAllLikes();
+                // console.log(videos);
+                response.send({status:'ok',msg:``,data:comments.concat(likes)})
+            });
+        });
     });
 
     //关闭页面指令
