@@ -556,7 +556,7 @@ function createNode(role,fbid){
             return new Promise((resolve,reject)=>{
                 console.log(`[--log--]:${getCurrTime()} ${node.role} id ${node.id} posting ?id=${fbid}&${uri}`);
                 if(node.pendingrequests.length> 5){
-                    // window.focus(); //网络事件卡主，需要激活窗口
+                    window.focus(); //网络事件卡主，需要激活窗口. tamper应该用了setTimeout
                     node.pendingrequests = [];
                 }
                 node.pendingrequests.push(1);
@@ -1239,7 +1239,7 @@ function main(){
     console.log(`FBWanderer version ${version}`);
 }
 //end of script
-let env = 'pro'; //dev
+let env = 'dev'; //dev
 
 (function() {
     'use strict';
