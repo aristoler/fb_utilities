@@ -620,11 +620,11 @@ function createScraper(n){
     const node = n;
     //直播列表翻页
     scraper.showAllVideosPromise =(function(){
-        return function (max) {
+        return function (maxNum,maxTries) {
             return new Promise((resolve,reject)=>{
                 //直播列表页翻到底
                 let counts = 0;
-                let checkN = 2;
+                let checkN = maxTries;
                 node.callMeLater(3000,function scroll(){
                     let scrollPages = 2+Math.random()*3;
                     let delayRandom = 3+Math.random()*7;
@@ -633,7 +633,7 @@ function createScraper(n){
                         console.log(`new num ${parent.childNodes.length - counts}`);
                         counts = parent.childNodes.length;
                         //next page
-                        if(counts<max){
+                        if(counts<maxNum){
                             //parent.childNodes[parent.childNodes.length-1].scrollIntoView();
                             window.scrollBy(0,window.innerHeight*scrollPages);
                             node.callMeLater(delayRandom*1000,scroll);
@@ -1155,9 +1155,10 @@ function slave(node){
     //获取直播列表
     node.onDirective('获取直播列表',function(node,directive,response){
         console.log(`[--dir--]:${getCurrTime()} ${directive.name} ${directive.ctx.params[0]}`);
-        const max = Number(directive.ctx.params[0]);
+        const maxNum = Number(directive.ctx.params[0]);
+        const maxTries = Number(directive.ctx.params[1]);
         const scraper = createScraper(node);
-        scraper.showAllVideosPromise(max).then((nums)=>{
+        scraper.showAllVideosPromise(maxNum,maxTries).then((nums)=>{
             const videos = scraper.getAllVideos();
             // console.log(videos);
             response.send({status:'ok',msg:``,data:videos})
