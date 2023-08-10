@@ -15,21 +15,29 @@
 // @grant        window.focus
 
 // ==/UserScript==
+let env = 'pro'; //dev
 
 (function() {
     'use strict';
     //to keep scripted update, note that github has a 5-mins cache mechanism
-    GM_xmlhttpRequest({
-    method : "GET",
-    // from other domain than the @match one (.org / .com):
-    url : "https://raw.githubusercontent.com/aristoler/fb_utilities/main/main.js",
-    onload : (response) =>
-    {
-        if (response.status !== 200) {
-            console.log('get script failed');
-            return;
-        }
-        eval(response.responseText);
+    if(env=='pro'){
+        GM_xmlhttpRequest({
+            method : "GET",
+            // from other domain than the @match one (.org / .com):
+            url : "https://raw.githubusercontent.com/aristoler/fb_utilities/main/main.js",
+            onload : (response) =>
+            {
+                if (response.status !== 200) {
+                    console.log('get script failed');
+                    return;
+                }
+                var code = response.responseText;
+                code = code.substring(code.indexOf("//begin of script"), code.indexOf("//end of script")+'//end of script'.length);
+                eval(code);
+                main();
+            }
+        });
+    }else{
+        main();
     }
-   });
 })();
