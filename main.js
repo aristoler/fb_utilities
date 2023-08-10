@@ -1160,7 +1160,7 @@ function slave(node){
 
     //获取直播列表
     node.onDirective('获取直播列表',function(node,directive,response){
-        console.log(`[--dir--]:${getCurrTime()} ${directive.name} ${directive.ctx.params[0]}`);
+        console.log(`[--dir--]:${getCurrTime()} ${directive.name} ${directive.ctx.params[0]} ${directive.ctx.params[1]}`);
         const maxNum = Number(directive.ctx.params[0]);
         const maxTries = Number(directive.ctx.params[1]);
         const scraper = createScraper(node);
