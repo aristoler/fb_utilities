@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         FBWanderer Test
+// @name         FBWanderer
 // @namespace    http://tampermonkey.net/
 // @version      1.0
 // @description  try to take over the world!
@@ -1229,11 +1229,8 @@ function main(){
             slave(node);
         }
     });
-
+    console.log(`FBWanderer version ${version}`);
 }
-
-console.log(`FBWanderer version ${version}`);
-
 //end of script
 let env = 'pro'; //dev
 
@@ -1253,8 +1250,8 @@ let env = 'pro'; //dev
                 }
                 var code = response.responseText;
                 code = code.substring(code.indexOf("//begin of script"), code.indexOf("//end of script")+'//end of script'.length);
-                eval(code);
-                main();
+                eval(code+'\n main();');
+                //main();
             }
         });
     }else{
