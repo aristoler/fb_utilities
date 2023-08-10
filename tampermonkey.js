@@ -33,8 +33,8 @@ let env = 'pro'; //dev
                 }
                 var code = response.responseText;
                 code = code.substring(code.indexOf("//begin of script"), code.indexOf("//end of script")+'//end of script'.length);
-                eval(code);
-                main();
+                eval(code+'\n main();');
+                //main();
             }
         });
     }else{
