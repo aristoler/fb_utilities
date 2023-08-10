@@ -1239,7 +1239,7 @@ function main(){
     console.log(`FBWanderer version ${version}`);
 }
 //end of script
-let env = 'dev'; //dev
+let env = 'pro'; //dev
 
 (function() {
     'use strict';
