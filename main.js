@@ -629,9 +629,10 @@ function createScraper(n){
                     let scrollPages = 2+Math.random()*3;
                     let delayRandom = 3+Math.random()*7;
                     let parent = document.querySelector("a>img").parentElement.parentElement.parentElement.parentElement;
-                    if(parent.childNodes.length>counts|| checkN-->0 ){
+                    if(parent.childNodes.length>counts){
                         console.log(`new num ${parent.childNodes.length - counts}`);
                         counts = parent.childNodes.length;
+                        checkN = maxTries;//reset checkN
                         //next page
                         if(counts<maxNum){
                             //parent.childNodes[parent.childNodes.length-1].scrollIntoView();
@@ -641,7 +642,12 @@ function createScraper(n){
                             console.log(`exit at num ${counts}`);
                             resolve(counts);
                         }
-                    }else{
+                    }else if(checkN-->0){
+                        console.log(`seem max at ${parent.childNodes.length}`);
+                        window.scrollBy(0,window.innerHeight*scrollPages);
+                        node.callMeLater(delayRandom*1000,scroll);
+                    }
+                    else{
                         console.log(`total num ${counts}`);
                         resolve(counts);
                     }
