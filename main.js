@@ -643,7 +643,7 @@ function createScraper(n){
                             resolve(counts);
                         }
                     }else if(checkN-->0){
-                        console.log(`seem max at ${parent.childNodes.length}`);
+                        console.log(`seem max at ${counts}`);
                         window.scrollBy(0,window.innerHeight*scrollPages);
                         node.callMeLater(delayRandom*1000,scroll);
                     }
@@ -769,10 +769,14 @@ function createScraper(n){
                     //点赞数
                     let likes = likeZone.querySelectorAll("div[data-visualcompletion=\"ignore-dynamic\"]");
                     //next page
-                    if(likes.length>counts||checkN-->0){
+                    if(likes&&likes.length>counts){
                         console.log(`new likes ${likes.length - counts}`);
                         counts = likes.length;
+                        checkN = 2;//reset maxtries
                         likes[likes.length-1].scrollIntoView();
+                        node.callMeLater(delayRandom*1000,scroll);
+                    }else if(checkN-->0){
+                        console.log(`seem max at ${counts}`);
                         node.callMeLater(delayRandom*1000,scroll);
                     }else{
                         console.log(`total likes ${counts}`);
