@@ -755,16 +755,14 @@ function createScraper(n){
             return new Promise((resolve,reject)=>{
                 let showbtn = document.querySelector("div[role=\"complementary\"] span[role=\"toolbar\"]" ).parentElement.querySelector("div>span>div[role=\"button\"]");
                 //点赞框未弹出
-                if(!document.querySelector("div[role=\"dialog\"] div[role=\"tablist\"]")){
-                    showbtn.click();
-                }
+                showbtn.click();
                 //点赞翻页
                 let counts = 0;
                 let checkN = 2;
                 node.callMeLater(3000,function scroll(){
                     let delayRandom = 3+Math.random()*7;
                     //点赞区
-                    let likeZone = document.querySelector("div[role=\"dialog\"] div[role=\"tablist\"]")
+                    let likeZone = document.querySelector("div[aria-labelledby][role=\"dialog\"] div[role=\"tablist\"]")
                     .parentElement.parentElement.parentElement.parentElement.parentElement.lastChild;
                     //点赞数
                     let likes = likeZone.querySelectorAll("div[data-visualcompletion=\"ignore-dynamic\"]");
@@ -847,7 +845,7 @@ function master(node){
     // }
     //进入页面指令
     node.onDirective('打开',function(node,directive,response){
-        console.log(`[--dir--]:${getCurrTime()} ${directive.name}  ${directive.ctx.params[0]}  ${directive.ctx.params[1]}`);
+        console.log(`[--dir--]:${getCurrTime()}>>${directive.name}(${directive.ctx.params.join(',')}）`);
         const taskname = directive.taskname;
         const url = directive.ctx.params[0];
         const len = directive.ctx.params[1];
@@ -858,7 +856,6 @@ function master(node){
                 console.log(`idle slave ${slaveid} for ${taskname}`);
                 console.log(node.slaves[slaveid]);
                 node.slaves[slaveid].taskname = taskname;
-                console.log(`[--dir--]:${getCurrTime()} ${directive.name} ${url} ${len}`);
                 node.sendDirective(slaveid,directive).then((ret)=>{
                     console.log(ret);
                     node.slaves[slaveid].taskurl = url;//重定向后实际slave.url可能和目标url有差别
@@ -875,7 +872,7 @@ function master(node){
     //等待指令（给组合指令的后续指令增加延时）
     node.onDirective('等待',function(node,directive,response){
         let delay = parseTimeCfg(directive.ctx.params[0]);
-        console.log(`[--dir--]:${getCurrTime()} ${directive.name} ${directive.ctx.params[0]}`);
+        console.log(`[--dir--]:${getCurrTime()}>>${directive.name}(${directive.ctx.params.join(',')}）`);
         //seconds*1000
         node.callMeLater(delay*1000,function check(){
             response.send({status:'ok',msg:`wait ${delay}s`})
@@ -884,7 +881,7 @@ function master(node){
 
     //刷新指令
     node.onDirective('刷新',function(node,directive,response){
-        console.log(`[--dir--]:${getCurrTime()} ${directive.name}`);
+        console.log(`[--dir--]:${getCurrTime()}>>${directive.name}(${directive.ctx.params.join(',')}）`);
         //刷新指令，refresh返回即页面准备就绪
         node.refreshTask(directive.taskname).then((slaveid)=>{
             console.log(`[--log--]:${getCurrTime()} reload done with new id ${slaveid}`);
@@ -895,7 +892,7 @@ function master(node){
     //页面监听直播指令
     node.onDirective('监听直播',function(node,directive,response){
         const mode = directive.ctx.params[0];//即停,持续
-        console.log(`[--dir--]:${getCurrTime()} ${directive.name} ${directive.ctx.params[0]}`);
+        console.log(`[--dir--]:${getCurrTime()}>>${directive.name}(${directive.ctx.params.join(',')}）`);
 
         //由master持续调度监听任务直至监听到或页面关闭
         //监听=发现+刷新指令的顺序执行循环（发给master调度）
@@ -925,7 +922,7 @@ function master(node){
 
     //上报指令
     node.onDirective('上报',function(node,directive,response){
-        console.log(`[--dir--]:${getCurrTime()} ${directive.name} ${directive.ctx.params[0]} ${directive.ctx.params[1]} ${directive.ctx.params[2]}`);
+        console.log(`[--dir--]:${getCurrTime()}>>${directive.name}(${directive.ctx.params.join(',')}）`);
         const sheetname = directive.ctx.params[0];
         const mode = directive.ctx.params[1]?directive.ctx.params[1]:'追加';//追加,去重
         const distinct= directive.ctx.params[2];
@@ -940,7 +937,7 @@ function master(node){
 
     //下一个指令
     node.onDirective('下一个',function(node,directive,response){
-        console.log(`[--dir--]:${getCurrTime()} ${directive.name} ${directive.ctx.params[0]} ${directive.ctx.params[1]} ${directive.ctx.params[2]}`);
+        console.log(`[--dir--]:${getCurrTime()}>>${directive.name}(${directive.ctx.params.join(',')}）`);
         const delay = directive.ctx.params[0];
         const sheetname = directive.ctx.params[1];
         const filter= directive.ctx.params[2];
@@ -956,7 +953,7 @@ function master(node){
     //master默认指令处理逻辑,转发指令
     //可能指令包含：发现、观看直播、进入直播、评论直播、播放直播、浏览、点赞、评论、随机滚动......
     node.onDirective('默认',function(node,directive,response){
-        console.log(`[--dir--]:${getCurrTime()} ${directive.name} 默认转发`);
+        console.log(`[--dir--]:${getCurrTime()}>>${directive.name}(${directive.ctx.params.join(',')}）默认转发`);
         //转发执行
         node.sendDirective(node.getTaskId(directive.taskname),directive).then((ret)=>{
             response.send(ret)
@@ -998,7 +995,7 @@ function slave(node){
         const url = directive.ctx.params[0];
         const len = directive.ctx.params[1];
         //打开
-        console.log(`[--dir--]:${getCurrTime()} ${directive.name} ${url} ${len}, 实际 ${window.location.href}`);
+        console.log(`[--dir--]:${getCurrTime()}>>${directive.name}(${directive.ctx.params.join(',')}）, 实际 ${window.location.href}`);
         node.taskname = directive.taskname;
         window.name = node.taskname;
 
@@ -1014,7 +1011,7 @@ function slave(node){
 
     //页面监听前先刷新
     node.onDirective('刷新',function(node,directive,response){
-        console.log(`[--dir--]:${getCurrTime()} ${directive.name}`);
+        console.log(`[--dir--]:${getCurrTime()}>>${directive.name}(${directive.ctx.params.join(',')}）`);
         //刷新时slaveid会换，通知注销本页面
         node.sendMsgTo(ALL_ID,'fin',{});//tells others i'm killed
         response.send({status:'ok',msg:`reloaded`})
@@ -1024,7 +1021,7 @@ function slave(node){
 
     //页面监听指令
     node.onDirective('发现',function(node,directive,response){
-        console.log(`[--dir--]:${getCurrTime()} ${directive.name}`);
+        console.log(`[--dir--]:${getCurrTime()}>>${directive.name}(${directive.ctx.params.join(',')}）`);
         //滚动10页
         window.scrollBy(0,window.innerHeight*10);
         //等待5s加载后,监听最新内容
@@ -1042,13 +1039,13 @@ function slave(node){
 
     //页面浏览指令
     node.onDirective('浏览',function(node,directive,response){
-        console.log(`[--dir--]:${getCurrTime()} ${directive.name}`);
+        console.log(`[--dir--]:${getCurrTime()}>>${directive.name}(${directive.ctx.params.join(',')}）`);
         response.send({status:'ok',msg:``})
     });
 
     //页面点击观看直播
     node.onDirective('观看直播',function(node,directive,response){
-        console.log(`[--dir--]:${getCurrTime()} ${directive.name}`);
+        console.log(`[--dir--]:${getCurrTime()}>>${directive.name}(${directive.ctx.params.join(',')}）`);
         //切入视图中间
         let headerHeight = document.querySelector("div[role=\"navigation\"]").getBoundingClientRect().height*2;
         //scroll into view then offset the header
@@ -1062,7 +1059,7 @@ function slave(node){
 
     //页面点击观看直播
     node.onDirective('进入直播',function(node,directive,response){
-        console.log(`[--dir--]:${getCurrTime()} ${directive.name}`);
+        console.log(`[--dir--]:${getCurrTime()}>>${directive.name}(${directive.ctx.params.join(',')}）`);
         let islive = document.querySelector("div[aria-label*=\"正在觀看這段影片\"]");
         if(islive){
             let zoombtn = document.querySelector("div[aria-label*=\"正在觀看這段影片\"]")
@@ -1083,7 +1080,7 @@ function slave(node){
 
     //页面点击评论直播
     node.onDirective('评论直播',function(node,directive,response){
-        console.log(`[--dir--]:${getCurrTime()} ${directive.name}`);
+        console.log(`[--dir--]:${getCurrTime()}>>${directive.name}(${directive.ctx.params.join(',')}）`);
         //缓一下重新点击
         let cmntbtn = document.querySelector("div[aria-label=\"留言\"]");
             //document.querySelector("div[role=\"dialog\"]").querySelector("div[aria-label=\"播放\"]");
@@ -1100,7 +1097,7 @@ function slave(node){
 
     //页面点击评论直播
     node.onDirective('播放直播',function(node,directive,response){
-        console.log(`[--dir--]:${getCurrTime()} ${directive.name}`);
+        console.log(`[--dir--]:${getCurrTime()}>>${directive.name}(${directive.ctx.params.join(',')}）`);
         //缓一下重新点击
         // let playbtn = document.querySelector("div[role=\"dialog\"]").querySelector("div[aria-label=\"播放\"]");
         // if(playbtn){
@@ -1116,13 +1113,13 @@ function slave(node){
 
     //页面点赞指令
     node.onDirective('点赞',function(node,directive,response){
-        console.log(`[--dir--]:${getCurrTime()} ${directive.name}`);
+        console.log(`[--dir--]:${getCurrTime()}>>${directive.name}(${directive.ctx.params.join(',')}）`);
         response.send({status:'ok',msg:``})
     });
 
     //页面评论指令
     node.onDirective('评论',function(node,directive,response){
-        console.log(`[--dir--]:${getCurrTime()} ${directive.name} ${directive.ctx.params[0]}`);
+        console.log(`[--dir--]:${getCurrTime()}>>${directive.name}(${directive.ctx.params.join(',')}）`);
         let comment = directive.ctx.params[0];
         let editArea = document.querySelector("div[role=\"dialog\"] div[role=\"textbox\"]");
         let sendbtn = document.querySelector("div[role=\"dialog\"] div[aria-label=\"留言\"]")
@@ -1137,13 +1134,13 @@ function slave(node){
 
     //页面随机滚动指令
     node.onDirective('随机滚动',function(node,directive,response){
-        console.log(`[--dir--]:${getCurrTime()} ${directive.name}`);
+        console.log(`[--dir--]:${getCurrTime()}>>${directive.name}(${directive.ctx.params.join(',')}）`);
         response.send({status:'ok',msg:``})
     });
 
     //进入直播列表
     node.onDirective('进入直播列表',function(node,directive,response){
-        console.log(`[--dir--]:${getCurrTime()} ${directive.name}`);
+        console.log(`[--dir--]:${getCurrTime()}>>${directive.name}(${directive.ctx.params.join(',')}）`);
         node.actThenWait(-1,(done)=>{//act
             if(0===document.querySelectorAll("div[role=\"menu\"] a[role=\"menuitemradio\"]").length){
                 document.querySelector("div[aria-haspopup=\"menu\"]").click();
@@ -1164,7 +1161,7 @@ function slave(node){
 
     //获取直播列表
     node.onDirective('获取直播列表',function(node,directive,response){
-        console.log(`[--dir--]:${getCurrTime()} ${directive.name} ${directive.ctx.params[0]} ${directive.ctx.params[1]}`);
+        console.log(`[--dir--]:${getCurrTime()}>>${directive.name}(${directive.ctx.params.join(',')}）`);
         const maxNum = Number(directive.ctx.params[0]);
         const maxTries = Number(directive.ctx.params[1]);
         const scraper = createScraper(node);
@@ -1177,7 +1174,7 @@ function slave(node){
 
     //获取评论列表(含赞)
     node.onDirective('获取评论列表',function(node,directive,response){
-        console.log(`[--dir--]:${getCurrTime()} ${directive.name}`);
+        console.log(`[--dir--]:${getCurrTime()}>>${directive.name}(${directive.ctx.params.join(',')}）`);
         const scraper = createScraper(node);
         scraper.showAllCommentsPromise().then((nums)=>{
             let comments = scraper.getAllComments();
@@ -1191,7 +1188,7 @@ function slave(node){
 
     //关闭页面指令
     node.onDirective('关闭',function(node,directive,response){
-        console.log(`[--dir--]:${getCurrTime()} ${directive.name}`);
+        console.log(`[--dir--]:${getCurrTime()}>>${directive.name}(${directive.ctx.params.join(',')}）`);
         response.send({status:'ok',msg:``})
         //延迟1s关闭，避免消息没返成功
         node.callMeLater(1000,()=>{
@@ -1243,7 +1240,7 @@ function main(){
     console.log(`FBWanderer version ${version}`);
 }
 //end of script
-let env = 'pro'; //dev
+let env = 'dev'; //dev
 
 (function() {
     'use strict';
