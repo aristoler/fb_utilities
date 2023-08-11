@@ -960,6 +960,13 @@ function master(node){
         });
     });
 
+    //重启master指令
+    node.onDirective('重启',function(node,directive,response){
+        console.log(`[--dir--]:${getCurrTime()}>>${directive.name}(${directive.ctx.params.join(',')}）`);
+        window.location.reload();
+        //response.send({status:'ok',msg:``});
+    });
+
     //End:指令驱动的任务
 
     //Begin:定时器驱动的任务
