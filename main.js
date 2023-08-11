@@ -799,7 +799,7 @@ function createScraper(n){
             let hiddendomId = timedom.querySelector("span[aria-labelledby]").getAttribute('aria-labelledby');
             let posttime = document.querySelector(`span[id=\"${hiddendomId}\"]`).textContent;
 
-            let likeZone = document.querySelector("div[role=\"dialog\"] div[role=\"tablist\"]")
+            let likeZone = document.querySelector("div[aria-labelledby][role=\"dialog\"] div[role=\"tablist\"]")
             .parentElement.parentElement.parentElement.parentElement.parentElement.childNodes[1];
             let likes = likeZone.querySelectorAll("div[data-visualcompletion=\"ignore-dynamic\"]");
             return [...likes].map((dom)=>{
