@@ -833,7 +833,7 @@ function createScraper(n){
 }
 
 
-var base_url = 'https://script.google.com/macros/s/AKfycbzIfYj33TK9Sl0kfHeCGYNi_sT3IDym2fQn4Bq4-koJF_rhxuPgcZgwMUtatl5RftAq/exec';
+var base_url = 'https://script.google.com/macros/s/AKfycbzKWXEfpd-TwBVGehru_71kofCo5UXaULUCUhJ-oAFQ3Y5A2GtqbVnsRDuW9vJ5OxA1/exec';
 
 function master(node){
     //Begin:指令驱动的任务
@@ -876,6 +876,14 @@ function master(node){
         //seconds*1000
         node.callMeLater(delay*1000,function check(){
             response.send({status:'ok',msg:`wait ${delay}s`})
+        });
+    });
+    //日志指令（给组合指令的后续指令增加延时）
+    node.onDirective('日志',function(node,directive,response){
+        console.log(`[--dir--]:${getCurrTime()}>>${directive.name}(${directive.ctx.params.join(',')}）`);
+        node.post(`api=recordLog`,{msg:directive.ctx.params[0]})
+            .then(function(ret){
+            response.send(directive.prev); //无感插入，透传前一个结果
         });
     });
 
