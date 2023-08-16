@@ -472,7 +472,7 @@ function createNode(role,fbid){
             const reloaddirective = {
                 name:'刷新',
                 taskname: taskname,
-                ctx:{}
+                ctx:{params:[]}
             };
             //刷新指令
             return node.sendDirective(node.getTaskId(taskname),reloaddirective)
