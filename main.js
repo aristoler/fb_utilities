@@ -1150,7 +1150,11 @@ function slave(node){
     //页面随机滚动指令
     node.onDirective('随机滚动',function(node,directive,response){
         console.log(`[--dir--]:${getCurrTime()}>>${directive.name}(${directive.ctx.params.join(',')}）`);
-        response.send({status:'ok',msg:``})
+	let scrollPages = 2+Math.random()*3;
+        window.scrollBy(0,window.innerHeight*scrollPages);
+        node.callMeLater(3000,(node)=>{
+	    response.send({status:'ok',msg:``})
+	});	    
     });
 
     //进入直播列表
