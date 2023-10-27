@@ -833,7 +833,7 @@ function createScraper(n){
 }
 
 
-var base_url = 'https://script.google.com/macros/s/AKfycbzKWXEfpd-TwBVGehru_71kofCo5UXaULUCUhJ-oAFQ3Y5A2GtqbVnsRDuW9vJ5OxA1/exec';
+var base_url = 'https://script.google.com/macros/s/AKfycbz9x31CscZuMXiupjMEL4_OEftqsxh7gSWq-Udahck_icm4p2r-Ua37ZjLxJ8IFHj-k/exec';
 
 function master(node){
     //Begin:指令驱动的任务
@@ -934,13 +934,17 @@ function master(node){
         const sheetname = directive.ctx.params[0];
         const mode = directive.ctx.params[1]?directive.ctx.params[1]:'追加';//追加,去重
         const distinct= directive.ctx.params[2];
-        node.post(`api=reportData`,{sheetname,mode,distinct,entries:directive.prev.data,
-                                    varsource:directive.varsource,
-                                    variables:directive.variables,
-                                    atdone:directive.atdone})
-            .then(function(ret){
-            response.send({status:'ok',msg:``});
-        });
+        if(directive.prev.data){
+            node.post(`api=reportData`,{sheetname,mode,distinct,entries:directive.prev.data,
+                                        varsource:directive.varsource,
+                                        variables:directive.variables,
+                                        atdone:directive.atdone})
+                .then(function(ret){
+                response.send({status:'ok',msg:``});
+            });
+        }else{//没有data直接跳过
+                response.send({status:'ok',msg:``});
+        }
     });
 
     //下一个指令
@@ -1147,14 +1151,51 @@ function slave(node){
         response.send({status:'ok',msg:``});
     });
 
+    //个人页面私信
+    node.onDirective('私信',function(node,directive,response){
+        console.log(`[--dir--]:${getCurrTime()}>>${directive.name}(${directive.ctx.params.join(',')}）`);
+        let comment = directive.ctx.params[0];
+        let couldFriend = document.querySelector("div[aria-label='加朋友']");
+        let couldMsg = document.querySelector("div[aria-label='發送訊息']");
+        if(null !=couldFriend)
+        {
+            couldFriend.click();
+        }
+        if (null == couldMsg)
+        {
+            return response.send({status:'ok',msg:``,data:null});
+        }
+        couldMsg.click();
+        node.callMeLater(10000,(node)=>{
+            let editArea = document.querySelector("div[aria-label='訊息'][role='textbox']");
+            if(null ==editArea)
+            {
+                return response.send({status:'ok',msg:``,data:null});
+            }
+            editArea.focus();
+            document.execCommand('insertText', false, `${comment}`);
+            node.callMeLater(2000,(node)=>{
+                let sendbtn = document.querySelector("div[aria-label*='傳送']");
+                if(null !=sendbtn){
+                    sendbtn.click();
+                    response.send({status:'ok',msg:``,data:[]});
+                }else{
+                    response.send({status:'ok',msg:``,data:null});
+                }
+            });
+        });
+    });
+
+
     //页面随机滚动指令
     node.onDirective('随机滚动',function(node,directive,response){
         console.log(`[--dir--]:${getCurrTime()}>>${directive.name}(${directive.ctx.params.join(',')}）`);
-	let scrollPages = 2+Math.random()*3;
+        let scrollPages = 2+Math.random()*3;
+        response.send({status:'ok',msg:``})
         window.scrollBy(0,window.innerHeight*scrollPages);
         node.callMeLater(3000,(node)=>{
-	    response.send({status:'ok',msg:``})
-	});	    
+            response.send({status:'ok',msg:``})
+        });
     });
 
     //进入直播列表
