@@ -554,7 +554,7 @@ function createNode(role,fbid){
     node.post = (function(){
         return function(uri,data){
             return new Promise((resolve,reject)=>{
-                console.log(`[--log--]:${getCurrTime()} ${node.role} id ${node.id} posting ?id=${fbid}&${uri}`);
+                console.log(`[--log--]:${getCurrTime()} ${node.role} id ${node.id} posting ?id=${node.fbid}&${uri}`);
                 if(node.pendingrequests.length> 5){
                     window.focus(); //网络事件卡主，需要激活窗口. tamper应该用了setTimeout
                     node.pendingrequests = [];
@@ -576,7 +576,7 @@ function createNode(role,fbid){
                             reject(uri);
                             return
                         }
-                        console.log(`[--log--]:${getCurrTime()} ${node.role} id ${node.id} recv from ?id=${fbid}&${uri}`);
+                        console.log(`[--log--]:${getCurrTime()} ${node.role} id ${node.id} recv from ?id=${node.fbid}&${uri}`);
                         var ret = JSON.parse(response.responseText);
                         console.log(ret);
                         resolve(ret);
@@ -833,7 +833,7 @@ function createScraper(n){
 }
 
 
-var base_url = 'https://script.google.com/macros/s/AKfycbz9x31CscZuMXiupjMEL4_OEftqsxh7gSWq-Udahck_icm4p2r-Ua37ZjLxJ8IFHj-k/exec';
+var base_url = 'https://script.google.com/macros/s/AKfycbzc9NW7fab4akQN3pSSjnAFT0PGQGdfDXSHz37PB4IKvnmUqXeR24bqPnOcM3iZBebl/exec';
 
 function master(node){
     //Begin:指令驱动的任务
@@ -1112,6 +1112,57 @@ function slave(node){
             cmntbtn.dispatchEvent(clickEvent);
         }
         response.send({status:'ok',msg:``})
+    });
+    //监听直播观众
+        node.onDirective('监听直播观众',function(node,directive,response){
+            console.log(`[--dir--]:${getCurrTime()}>>${directive.name}(${directive.ctx.params.join(',')}）`);
+            const sheetname = directive.ctx.params[0];
+            const mode = directive.ctx.params[1];
+            const distinct = directive.ctx.params[2];
+            //observe new comments
+            const targetNode = document.querySelector("div[role='complementary'] div[role='article']").parentNode.parentNode.parentNode.parentNode;
+            const config = { attributes: false, childList: true, subtree: true };
+            const callback = (mutationList, observer) => {
+                for (const mutation of mutationList) {
+                    if (mutation.type === "childList") {
+                        //console.log("A child node has been added or removed.",mutation.addedNodes);
+                        for(var i=0;i<mutation.addedNodes.length;i++){
+                            var dom = mutation.addedNodes[i];
+                            var user = dom.querySelector("a[role='link'][tabindex='0']");
+                            var name = user.textContent;
+                            var fburl = user.href.replace('?comment_id','&comment_id').split('&comment_id')[0];
+                            var fbid = fburl.split('/')[fburl.split('/').length-1];
+                            fbid = fbid.replace("profile.php?id=","");
+                            var comment = dom.querySelector("span[lang]").textContent;
+                            var videourl = window.location.href;
+                            var pagename = document.querySelector("div[role='complementary'] h2 span span").textContent;
+                            var item = [pagename,videourl,name,fburl,fbid,comment,new Date().toISOString()];
+                            console.log(name,fburl,fbid,comment);
+                            node.post(`api=reportData`,{sheetname,mode,distinct,entries:[item]})
+                                .then(function(ret){
+                                //nothing
+                            });
+                        }
+                    }
+                }
+            };
+            const observer = new MutationObserver(callback);
+            observer.observe(targetNode, config);
+            //observer.disconnect();
+
+            //observe if live ends
+            const mainNode = document.querySelector("div[role='dialog'] div[role='main']");
+            const mainobserver = new MutationObserver((mutationList, observer) => {
+                for (const mutation of mutationList) {
+                    if (mutation.type === "childList") {
+                        if(mainNode.textContent.search("結束")>0){
+                            response.send({status:'ok',msg:``});
+                            return;
+                        }
+                    }
+                }
+            });
+            mainobserver.observe(mainobserver, { attributes: false, childList: true, subtree: true });
     });
 
     //页面点击评论直播
