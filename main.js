@@ -12,6 +12,7 @@
 // @grant        GM_xmlhttpRequest
 // @grant        GM_download
 // @grant        GM_getTabs
+// @grant        GM_addElement
 // @grant        window.close
 // @grant        window.focus
 
@@ -61,9 +62,12 @@ function worker_timer(){
 }
 
 function mainpage_eval(func){
-    var script = document.createElement("script");
-    script.textContent = "(" + func.toString() + ")();";
-    document.body.appendChild(script);
+    //var script = document.createElement("script");
+    //script.textContent = "(" + func.toString() + ")();";
+    //document.body.appendChild(script);
+    GM_addElement('script', {
+  textContent:  "(" + func.toString() + ")();"
+    });
 }
 
 function dateFormat (date,format) { //author: meizz
@@ -93,7 +97,12 @@ function getCurrTime(){
 function getCurrDate(){
   return dateFormat(new Date,"yyyy-MM-dd");
 }
-
+function contains(selector, text) {
+  var elements = document.querySelectorAll(selector);
+  return Array.prototype.filter.call(elements, function(element){
+    return RegExp(text).test(element.textContent);
+  });
+}
 function createNode(role,fbid){
 
     const namespace = 'zzyycc';
@@ -1236,8 +1245,75 @@ function slave(node){
             });
         });
     });
+    //分享到小組
+    node.onDirective('分享小组',function(node,directive,response){
+        console.log(`[--dir--]:${getCurrTime()}>>${directive.name}(${directive.ctx.params.join(',')}）`);
+        var currNum = 0;
+        var groupnum = 1;
+        //wait between publishs
+        (function publishOneToGroup(){
+            var sharebtn = document.querySelector("div[aria-label*='寄送']");
+            console.log('click sharebtn');
+            sharebtn.click();
+            //wait for share options
+            setTimeout(()=>{
+                var menu = document.querySelector("div[aria-label*='分享選項']");
+                var morebtn = menu.querySelectorAll("div[data-visualcompletion] div[role='button']")[3];
+                console.log('click morebtn');
+                morebtn.click();
+                window.focus();//need to be focused to update btns
+                const menuobserver = new MutationObserver((mutationList, observer) => {
+                    for (const mutation of mutationList) {
+                        if (mutation.type === "childList") {
+                            if(menu.textContent.search("分享到社團")>0){
+                                var groupbtn = document.querySelector("div[aria-label='分享選項']").querySelectorAll("div[role='button']")[10];
+                                console.log('click groupbtn');
+                                groupbtn.click();
+                                //wait for group to show
+                                setTimeout(()=>{
+                                    var items = document.querySelectorAll("div[role='dialog'] div[role='list'] div[role='listitem'] div[role='button']");
+                                    groupnum = items.length;
+                                    console.log('click groupb item');
+                                    items[currNum].click();
+                                    console.log(`${currNum+1}/${groupnum},${items[currNum].querySelectorAll("span")[0].textContent},${items[currNum].querySelectorAll("span")[1].textContent}`
+                                               );
+                                    //wait to publish
+                                    setTimeout(()=>{
+                                        //document.querySelector("div[aria-label='發佈']").click();
+                                        document.querySelector("div[aria-label='關閉']").click();
+                                        currNum = currNum + 1;
+                                        if(currNum<groupnum){
+                                            //next publish
+                                            setTimeout(publishOneToGroup,3000);
+                                        }else{
+                                            response.send({status:'ok',msg:``});
+                                        }
+                                    },5000);
+                                },5000)
+                                return;
+                            }
+                        }
+                    }
+                });
+                menuobserver.observe(menu, { attributes: false, childList: true, subtree: true });
+            },3000);
+        })();
+    });
 
-
+    //分享到动态
+    node.onDirective('分享动态',function(node,directive,response){
+        console.log(`[--dir--]:${getCurrTime()}>>${directive.name}(${directive.ctx.params.join(',')}）`);
+        var sharebtn = document.querySelector("div[aria-label*='寄送']");
+        console.log('click sharebtn');
+        sharebtn.click();
+        //wait for share options
+        setTimeout(()=>{
+            var menu = document.querySelector("div[aria-label*='分享選項']");
+            var postbtn = menu.querySelectorAll("div[data-visualcompletion] div[role='button']")[0];
+            postbtn.click();
+            response.send({status:'ok',msg:``});
+        },3000);
+    });
     //页面随机滚动指令
     node.onDirective('随机滚动',function(node,directive,response){
         console.log(`[--dir--]:${getCurrTime()}>>${directive.name}(${directive.ctx.params.join(',')}）`);
