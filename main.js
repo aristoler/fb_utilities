@@ -1279,14 +1279,14 @@ function slave(node){
                                                );
                                     //wait to publish
                                     setTimeout(()=>{
-                                        //document.querySelector("div[aria-label='發佈']").click();
-                                        document.querySelector("div[aria-label='關閉']").click();
+                                        document.querySelector("div[aria-label='發佈']").click();
+                                        //document.querySelector("div[aria-label='關閉']").click();
                                         currNum = currNum + 1;
                                         if(currNum<groupnum){
                                             //next publish
                                             setTimeout(publishOneToGroup,3000);
                                         }else{
-                                            response.send({status:'ok',msg:``});
+                                            response.send({status:'ok',msg:``,data:[]});
                                         }
                                     },5000);
                                 },5000)
@@ -1311,7 +1311,7 @@ function slave(node){
             var menu = document.querySelector("div[aria-label*='分享選項']");
             var postbtn = menu.querySelectorAll("div[data-visualcompletion] div[role='button']")[0];
             postbtn.click();
-            response.send({status:'ok',msg:``});
+            response.send({status:'ok',msg:``,data:[]});
         },3000);
     });
     //页面随机滚动指令
