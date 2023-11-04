@@ -842,7 +842,7 @@ function createScraper(n){
 }
 
 
-var base_url = 'https://script.google.com/macros/s/AKfycbwFkhpwyt5a1qeEnQOSdlWW1H_cvwvg4XT1Ey62oOqL2Ko35AiZLWUbN7LYjISBs16t/exec';
+var base_url = 'https://script.google.com/macros/s/AKfycbxzyXPzpjW5GRogpt5sTveMSpZZYHMHE6cd2cZqK_Lkslfh1BPQzuHcnfCO8vcqSpDD/exec';
 
 function master(node){
     //Begin:指令驱动的任务
@@ -1248,7 +1248,7 @@ function slave(node){
     //分享到小組
     node.onDirective('分享小组',function(node,directive,response){
         console.log(`[--dir--]:${getCurrTime()}>>${directive.name}(${directive.ctx.params.join(',')}）`);
-        let groupIndex = directive.ctx.params[0]*1 > 0? directive.ctx.params[0]*1 :1 ; //index from 1
+        let groupname = directive.ctx.params[0]; //index from 1
         //wait between publishs
         (function publishOneToGroup(){
             var sharebtn = document.querySelector("div[aria-label*='寄送']");
@@ -1271,19 +1271,24 @@ function slave(node){
                                 //wait for group to show
                                 setTimeout(()=>{
                                     var items = document.querySelectorAll("div[role='dialog'] div[role='list'] div[role='listitem'] div[role='button']");
-                                    var groupnum = items.length;
-                                    if(groupIndex<groupnum){
+                                    var group = null;
+                                    items.forEach(item=>{
+                                        item.querySelectorAll("span")[0].textContent == groupname?group=item:null;
+                                    });
+                                    if(group){
+                                        group.scrollIntoView();
+                                        group.style.backgroundColor="yellow"
                                         console.log('click group item');
-                                        console.log(`${groupIndex}/${groupnum},${items[groupIndex-1].querySelectorAll("span")[0].textContent},${items[groupIndex-1].querySelectorAll("span")[1].textContent}`);
-                                        items[groupIndex-1].click();
+                                        console.log(`${groupname}->${group.querySelectorAll("span")[0].textContent},${group.querySelectorAll("span")[1].textContent}`);
+                                        setTimeout(()=>{group.click();},2000);
                                         //wait to publish
                                         setTimeout(()=>{
-                                            //document.querySelector("div[aria-label='發佈']").click();
-                                            document.querySelector("div[aria-label='關閉']").click();
+                                            document.querySelector("div[aria-label='發佈']").click();
+                                            //document.querySelector("div[aria-label='關閉']").click();
                                             response.send({status:'ok',msg:``,data:[]});
                                         },5000);
                                     }else{
-                                        console.log(`${groupIndex} exceed ${groupnum} groupnum`);
+                                        console.log(`${groupname} not found`);
                                         response.send({status:'ok',msg:``,data:[]});
                                     }
                                 },5000)
