@@ -103,6 +103,49 @@ function contains(dom,selector, text) {
     return RegExp(text).test(element.textContent);
   });
 }
+//post operation
+function postText(text){
+    //如何更改facebook的contenteditable
+    //https://stackoverflow.com/questions/65040897/programmatically-change-input-value-in-facebooks-editable-div-input-area/65167751#65167751?newreg=5178a803f0c64caab1a24b2926343cfd
+    return new Promise((resolve,reject)=>{
+            var editArea = document.querySelector("div[role=\"presentation\"] div[role=\"textbox\"]");
+            editArea.focus();//需要聚焦，否则保留placerholder的文字
+            var eleToDispEvt = document.querySelector("div[role=\"presentation\"] div[role=\"textbox\"] span");
+            let tmpSpan;
+            tmpSpan = document.createElement("span");
+            tmpSpan.setAttribute("data-text", "true");
+            document.querySelector("div[data-editor]:first-child span").appendChild(tmpSpan);
+            text.split('\n').forEach(line=>{
+                //new text insert position
+                document.querySelector("div[data-editor]:last-child span").dispatchEvent(new KeyboardEvent('keydown', {bubbles: true,'keyCode': 13}));
+                tmpSpan.innerText = line;
+                // simulate user's input
+                document.querySelector("div[data-editor]:last-child span").dispatchEvent(new InputEvent('input', {bubbles: true}));
+            });
+            if (tmpSpan) tmpSpan.remove();//to avoid duplication,Facebook adds it itself!
+            setTimeout(resolve,3000);
+    });
+}
+function postImage (inputElement,imageUrl){
+//finally find the resolution
+//https://stackoverflow.com/questions/76478227/file-upload-event-in-the-form-of-creating-a-new-post-on-facebook
+	return new Promise((resolve,reject)=>{
+		fetch(imageUrl)
+		.then(response => response.blob())
+		.then(blob => {
+			const file = new File([blob], 'myimage.jpg', { type: blob.type });
+			const dataTransfer = new DataTransfer();
+			dataTransfer.items.add(file);
+			inputElement.files = dataTransfer.files;
+			const eventNames = ['change', 'input', 'blur', 'focus'];
+			eventNames.forEach(eventName => {
+				const event = new Event(eventName, { bubbles: true });
+				inputElement.dispatchEvent(event);
+			});
+			setTimeout(resolve,3000);
+		});
+	});
+}
 function createNode(role,fbid){
 
     const namespace = 'zzyycc';
@@ -842,7 +885,7 @@ function createScraper(n){
 }
 
 
-var base_url = 'https://script.google.com/macros/s/AKfycbxzyXPzpjW5GRogpt5sTveMSpZZYHMHE6cd2cZqK_Lkslfh1BPQzuHcnfCO8vcqSpDD/exec';
+var base_url = 'https://script.google.com/macros/s/AKfycbxPBe-L7xhlvJtNLxGDvJlOG-9r5SwAX9Be-CBomAQleViyc12xanarJC8qhVhKlHKb/exec';
 
 function master(node){
     //Begin:指令驱动的任务
@@ -1269,7 +1312,7 @@ function slave(node){
                                 console.log('click groupbtn');
                                 groupbtn.click();
                                 //wait for group to show
-                                setTimeout(()=>{
+                                function shareToGroup(){
                                     var items = document.querySelectorAll("div[role='dialog'] div[role='list'] div[role='listitem'] div[role='button']");
                                     var group = null;
                                     items.forEach(item=>{
@@ -1291,7 +1334,24 @@ function slave(node){
                                         console.log(`${groupname} not found`);
                                         response.send({status:'ok',msg:``,data:[]});
                                     }
-                                },5000)
+                                }
+                                function showMoreGroups(){
+                                    var items = document.querySelectorAll("div[role='dialog'] div[role='list'] div[role='listitem'] div[role='button']");
+                                    var groupNum = items.length;
+                                    Array.from(items).pop().scrollIntoView();
+                                    setTimeout(()=>{
+                                        items = document.querySelectorAll("div[role='dialog'] div[role='list'] div[role='listitem'] div[role='button']");
+                                        if(items.length == groupNum){
+                                            shareToGroup();
+                                        }else{
+                                            groupNum = items.length;
+                                            Array.from(items).pop().scrollIntoView();
+                                            setTimeout(showMoreGroups,3000);
+                                        }
+                                    },3000);
+
+                                }
+                                setTimeout(showMoreGroups,3000);
                                 return;
                             }
                         }
@@ -1367,7 +1427,70 @@ function slave(node){
         //首次翻頁
         document.querySelector("div[role='feed']>div:last-child").scrollIntoView();
     });
+    //获取我的小组
+    node.onDirective('获取我的小组',function(node,directive,response){
+        console.log(`[--dir--]:${getCurrTime()}>>${directive.name}(${directive.ctx.params.join(',')}）`);
+        var mygrouplist = Array.from(document.querySelectorAll(" div[role='list']")).pop();
+        var lastgroup = Array.from(mygrouplist.querySelectorAll("div[role='listitem'] span a")).pop()
+        lastgroup.scrollIntoView();
+        function getMoreGroups(){
+             var newlastgroup = Array.from(mygrouplist.querySelectorAll("div[role='listitem'] span a")).pop();
+             if(newlastgroup.textContent == lastgroup.textContent){
+                 var groups = Array.from(mygrouplist.querySelectorAll("div[role='listitem'] span a")).map(a=>{
+                     return [node.fbid,a.textContent,a.href];
+                 });
+                 response.send({status:'ok',msg:``,data:groups})
+             }else{
+                 lastgroup = newlastgroup;
+                 lastgroup.scrollIntoView();
+                 setTimeout(getMoreGroups,3000);
+             }
+        }
+        setTimeout(getMoreGroups,3000);
+    });
 
+    //小组爬取
+    node.onDirective('发图文',function(node,directive,response){
+        console.log(`[--dir--]:${getCurrTime()}>>${directive.name}(${directive.ctx.params.join(',')}）`);
+        var text = directive.ctx.params[0]; //index from 1
+        var images = directive.ctx.params[1].split('<>');
+        var btn = contains(document,"div[role='button']","留個言")[0];
+        btn.click();
+        var status = 'before_publish';
+        //text->image->publish
+        var doPublish = ()=>{postText(text).then(()=>{
+            const inputElement = document.querySelector("#toolbarLabel").parentElement.querySelector("input");
+            return images.reduce( (lastPromise, imageUrl) => {
+                return lastPromise.then(() => {
+                    return postImage(inputElement,imageUrl);
+                });
+            }, Promise.resolve())
+        }).then(()=>{
+            document.querySelector("div[aria-label='發佈']").click();
+            status = 'publishing';
+        })};
+        //wait dialog to show after click
+        const bodyobserver = new MutationObserver((mutationList, observer) => {
+            for (const mutation of mutationList) {
+                if (mutation.type === "childList") {
+                    if('before_publish'==status){
+                        for(var i=0;i<mutation.addedNodes.length;i++){
+                            var node = mutation.addedNodes[i];//maybe text node
+                            if(node.querySelector&&node.querySelector("div[role=\"presentation\"] div[role=\"textbox\"]")){
+                                doPublish();
+                                return;
+                            }
+                        }
+                    }else if('publishing'==status){
+                        if(null==document.querySelector("div[role=\"presentation\"] div[role=\"textbox\"]")){
+                            response.send({status:'ok',msg:``});//fiinish the job
+                        }
+                    }
+                }
+            }
+        });
+        bodyobserver.observe(document, { attributes: false, childList: true, subtree: true });
+    });
     //页面随机滚动指令
     node.onDirective('随机滚动',function(node,directive,response){
         console.log(`[--dir--]:${getCurrTime()}>>${directive.name}(${directive.ctx.params.join(',')}）`);
