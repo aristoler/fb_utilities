@@ -1294,7 +1294,7 @@ function slave(node){
         let groupname = directive.ctx.params[0]; //index from 1
         //wait between publishs
         (function publishOneToGroup(){
-            var sharebtn = document.querySelector("div[aria-label*='寄送']");
+            var sharebtn = document.querySelector("div[aria-label*='傳送']");
             console.log('click sharebtn');
             sharebtn.click();
             //wait for share options
