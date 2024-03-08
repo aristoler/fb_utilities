@@ -11,6 +11,8 @@
 // @connect      githubusercontent.com
 // @grant        GM_xmlhttpRequest
 // @grant        GM_download
+// @grant        GM_getTabs
+// @grant        GM_addElement
 // @grant        window.close
 // @grant        window.focus
 
