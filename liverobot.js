@@ -73,6 +73,68 @@ function postText(text){
 		setTimeout(()=>{resolve(sendbtn)},1000);
 	});
 }
+
+var messagePipe = [];
+var messagePromiser = Promise.resolve();
+function putMsgInPipe(dom,name,message) {
+    messagePipe.push({dom,name,message});
+    messagePromiser = messagePromiser.then(()=>{
+        return new Promise((resolve,reject)=>{
+            var msg = messagePipe.shift(1);
+            if(!!msg){
+                //发送
+                sendMsg(msg.dom,msg.message);
+                //不管上面有没有成功，都有延时交给下一棒，避免终止
+                setTimeout(()=>{
+                    console.log('send',msg.name,msg.message,new Date());
+                    resolve();
+                },8000);
+            }
+        });
+    });
+}
+
+function sendMsg(target,message){
+
+	//先挂载监听函数，再点击发消息
+	const msgboxcb = (mutationList, observer) => {
+			for (const mutation of mutationList) {
+				if (mutation.type === "childList") {
+				for(var i=0;i<mutation.addedNodes.length;i++){
+					var dom = mutation.addedNodes[i];
+					var msgbox = dom.querySelector("div[aria-label*='发消息给']");
+					if(!msgbox){
+						return;
+					}
+					//一次监听仅处理一次
+					observer.disconnect();
+					//等待fb挂载处理函数
+					setTimeout(()=>{
+                        var msgbtn = msgbox.querySelector("div[aria-label='发消息']");
+                        var closebtn = msgbox.querySelector("div[aria-label='关闭']");
+                        var msgcontent = msgbox.querySelector("div[contenteditable] p");
+                        message.trim().split('\n').filter(line=>line!='').forEach(line=>{
+                            // simulate user's input
+                            msgcontent.dispatchEvent(new InputEvent('input', {bubbles: true,data:line}));
+                            //new text insert position
+                            msgcontent.dispatchEvent(new KeyboardEvent('keydown', {bubbles: true,altKey:true,'keyCode': 13}));
+                        });
+                        setTimeout(()=>{
+                            //msgbtn.click();
+                            closebtn.click();
+                        },1000);
+                    },2000);
+				}
+			}
+		}
+	}
+	const observer = new MutationObserver(msgboxcb);
+	observer.observe(document.querySelector("body"), {childList: true,subtree:true});
+	//点击发消息
+	console.log(target,Array.from(target.querySelectorAll("ul li")).filter(a=>'发消息'==a.textContent));
+	Array.from(target.querySelectorAll("ul li div[role='button']")).filter(a=>'发消息'==a.textContent)[0].click();
+}
+
 //添加按钮
 function appendRobotBtn(){
     let tmpDiv = document.createElement("div");
@@ -130,10 +192,12 @@ function cronJob(){
 //https://www.facebook.com/zycfc/videos/
 var liveprefix = 'https://www.facebook.com/100093579038987/videos/';
 var interval = 10*60*1000;
+var isLiving = false;
 function isOnLivePage(){//div[role='dialog']
         if(0==window.location.href.search(liveprefix)
-           && Array.from(document.querySelectorAll("div[role='main'] span")).filter(a=>a.innerText=='直播').length>0
+           && null != Array.from(document.querySelectorAll("div[role='main'] div[data-pagelet='TahoeVideo'] span")).filter(a=>a.innerText=='直播').length>0
           ){
+            isLiving = true;
             return true;
         }else{
             return false;
@@ -234,14 +298,20 @@ function commentReply(comment){
 }
 var commentsPipe = [];
 var isMonitored = false;
-function pipeConsume(){
+function commentPipeConsume(){
+    if(false == isLiving)
+    {
+        postText('今日直播已结束，晚安好夢🌃❤~')
+        .then((sendbtn)=>{sendbtn.click();comment.cb();});
+        return;//直播结束
+    }
     var currTime = new Date().getTime();
     var comment = commentsPipe.shift(1);
     if(!comment){//empty
-        setTimeout(pipeConsume,3000);
+        setTimeout(commentPipeConsume,3000);
     }else if((currTime-comment.timestamp)>60*1000){
         console.log(`drop ${comment.msg} of ${comment.timestamp}`);
-        pipeConsume(); //next one
+        commentPipeConsume(); //next one
     }else{
         //有消息3s后发
         setTimeout(()=>{
@@ -253,11 +323,12 @@ function pipeConsume(){
                     isMonitored = true;
                 }
                 //3s 后再检查
-                pipeConsume();
+                commentPipeConsume();
             },2500);
         },2500);
     }
 }
+
 
 function monitorComments(){
     //observe new comments
@@ -296,17 +367,23 @@ function monitorComments(){
     //observer.disconnect();
 
     //observe if live ends
-    const mainNode = document.querySelector("div[role='dialog'] div[role='main']");
+    const mainNode = document.querySelector("div[role='main'] div[data-pagelet='TahoeVideo']");
     const mainobserver = new MutationObserver((mutationList, observer) => {
         for (const mutation of mutationList) {
             if (mutation.type === "childList") {
-                if(mainNode.textContent.search("結束")>0){
-                    return;
+                for(var i=0;i<mutation.addedNodes.length;i++){
+                    var dom = mutation.addedNodes[i];
+                    if(dom.textContent&&dom.textContent.search("结束")>0){
+                        console.log('结束了');
+                        isLiving = false;
+                        mainobserver.disconnect();
+                        return;
+                    }
                 }
             }
         }
     });
-    //mainobserver.observe(mainNode, { attributes: false, childList: true, subtree: true });
+    mainobserver.observe(mainNode, { attributes: false, childList: true, subtree: true });
 }
 //main
 (function() {
@@ -319,7 +396,7 @@ function monitorComments(){
                 appendRobotBtn();
                 console.log('start robot!');
                 cronJob();
-                pipeConsume();
+                commentPipeConsume();
                 setInterval(cronJob,interval);
             }
         },5000);
@@ -332,7 +409,7 @@ function monitorComments(){
                 appendRobotBtn();
                 console.log('start robot!');
                 cronJob();
-                pipeConsume();
+                commentPipeConsume();
                 setInterval(cronJob,interval);
             }
         },5000);
