@@ -1330,8 +1330,8 @@ function slave(node){
                         var sendbtn = document.querySelector("div[role='dialog'] form div[aria-label='发布']");
                         var closebtn = document.querySelector("div[role='dialog'] form div[aria-label='关闭']");
                         if(!!sendbtn){
-                            //sendbtn.click();
-                            closebtn.click();
+                            sendbtn.click();
+                            //closebtn.click();
                             response.send({status:'ok',msg:``,data:[]});
                             return true;
                         }
