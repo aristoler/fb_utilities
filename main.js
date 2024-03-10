@@ -1098,8 +1098,8 @@ function slave(node){
         //等待5s加载后,监听最新内容
         node.callMeLater(5*1000,()=>{
             let url = null;
-            if(document.querySelector("div[aria-label*=\"正在觀看這段影片\"]")){
-                url = document.querySelector("div[aria-label*=\"正在觀看這段影片\"]")
+            if(document.querySelector("div[aria-label*=\"人正在\"]")){
+                url = document.querySelector("div[aria-label*=\"人正在\"]")
                     .parentElement.parentElement.querySelector("a").href;
                 response.send({status:'ok',msg:`found`,url})
             }else{
