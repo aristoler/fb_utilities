@@ -146,6 +146,24 @@ function postImage (inputElement,imageUrl){
 		});
 	});
 }
+function observeNode(node,domcb,isonce){
+    const config = { attributes: false, childList: true, subtree: true };
+    const callback = (mutationList, observer) => {
+        for (const mutation of mutationList) {
+            if (mutation.type === "childList") {
+                //console.log("A child node has been added or removed.",mutation.addedNodes);
+                for(var i=0;i<mutation.addedNodes.length;i++){
+                    var dom = mutation.addedNodes[i];
+                    if(domcb(dom)&&isonce){
+                        observer.disconnect();
+                    }
+                }
+            }
+        }
+    };
+    const observer = new MutationObserver(callback);
+    observer.observe(node, config);
+}
 function createNode(role,fbid){
 
     const namespace = 'zzyycc';
@@ -1294,71 +1312,61 @@ function slave(node){
         let groupname = directive.ctx.params[0]; //index from 1
         //wait between publishs
         (function publishOneToGroup(){
-            var sharebtn = document.querySelector("div[aria-label*='傳送']");
+            //监听小组列表框
+            var isgroupfound = false;
+            observeNode(document.querySelector("div[role='banner']").nextSibling.nextSibling,(dom)=>{
+                var dialog = document.querySelector("div[role='dialog'] div[aria-label='分享到小组'");
+                var items = document.querySelectorAll("div[role='dialog'] div[role='list'] div[role='listitem'] div[role='button']");
+                var [group] = Array.from(items).filter(item=>item.querySelectorAll("span")[0].textContent == groupname);
+                //var sendbtn = document.querySelector("div[role='dialog'] form div[aria-label='发布']");
+                if(!!dialog&&!!group&&!isgroupfound){
+                    //found
+                    isgroupfound = true;
+                    group.scrollIntoView();
+                    group.style.backgroundColor="yellow"
+                    console.log(`${groupname},${group.querySelectorAll("span")[1].textContent}`);
+                    //监听可发送按钮
+                    observeNode(document.querySelector("div[role='banner']").nextSibling.nextSibling,(dom)=>{
+                        var sendbtn = document.querySelector("div[role='dialog'] form div[aria-label='发布']");
+                        var closebtn = document.querySelector("div[role='dialog'] form div[aria-label='关闭']");
+                        if(!!sendbtn){
+                            //sendbtn.click();
+                            closebtn.click();
+                            response.send({status:'ok',msg:``,data:[]});
+                            return true;
+                        }
+                        return false;
+                    },true);
+                    //点击小组
+                    console.log('click group item');
+                    group.click();
+                    return true;
+                }else if(!!dialog){
+                    //show more
+                    Array.from(items).pop().scrollIntoView();
+                }
+                return false;
+            },true);
+
+            //监听分享小组选项
+            observeNode(document.querySelector("div[role='banner']").nextSibling,(dom)=>{
+                var [morebtn] = Array.from(dom.querySelectorAll("div[aria-label='分享选项'] div[role='button']")).filter(a=>a.textContent == '更多选项');
+                var [groupbtn] = Array.from(dom.querySelectorAll("div[aria-label='分享选项'] div[role='button']")).filter(a=>a.textContent == '分享到小组');
+                if(!!groupbtn){
+                    //分享到小组
+                    console.log('click sharetogroup btn');
+                    groupbtn.click();
+                    return true;
+                }else if(!!morebtn){//展开选项
+                    console.log('click more btn');
+                    morebtn.click();
+                }
+                return false;
+            },true);
+            //点击分享按钮
+            var sharebtn = document.querySelector("div[aria-label*='发送']");
             console.log('click sharebtn');
             sharebtn.click();
-            //wait for share options
-            setTimeout(()=>{
-                var menu = document.querySelector("div[aria-label*='分享選項']");
-                var morebtn = contains(menu,"div[data-visualcompletion] div[role='button']","更多選項")[0];
-                console.log('click morebtn');
-                morebtn.click();
-                window.focus();//need to be focused to update btns
-                const menuobserver = new MutationObserver((mutationList, observer) => {
-                    for (const mutation of mutationList) {
-                        if (mutation.type === "childList") {
-                            if(menu.textContent.search("分享到社團")>0){
-                                var groupbtn = contains(document,"div[aria-label='分享選項'] div[role='button']","分享到社團")[0];
-                                console.log('click groupbtn');
-                                groupbtn.click();
-                                //wait for group to show
-                                function shareToGroup(){
-                                    var items = document.querySelectorAll("div[role='dialog'] div[role='list'] div[role='listitem'] div[role='button']");
-                                    var group = null;
-                                    items.forEach(item=>{
-                                        item.querySelectorAll("span")[0].textContent == groupname?group=item:null;
-                                    });
-                                    if(group){
-                                        group.scrollIntoView();
-                                        group.style.backgroundColor="yellow"
-                                        console.log('click group item');
-                                        console.log(`${groupname}->${group.querySelectorAll("span")[0].textContent},${group.querySelectorAll("span")[1].textContent}`);
-                                        setTimeout(()=>{group.click();},2000);
-                                        //wait to publish
-                                        setTimeout(()=>{
-                                            document.querySelector("div[aria-label='發佈']").click();
-                                            //document.querySelector("div[aria-label='關閉']").click();
-                                            response.send({status:'ok',msg:``,data:[]});
-                                        },5000);
-                                    }else{
-                                        console.log(`${groupname} not found`);
-                                        response.send({status:'ok',msg:``,data:[]});
-                                    }
-                                }
-                                function showMoreGroups(){
-                                    var items = document.querySelectorAll("div[role='dialog'] div[role='list'] div[role='listitem'] div[role='button']");
-                                    var groupNum = items.length;
-                                    Array.from(items).pop().scrollIntoView();
-                                    setTimeout(()=>{
-                                        items = document.querySelectorAll("div[role='dialog'] div[role='list'] div[role='listitem'] div[role='button']");
-                                        if(items.length == groupNum){
-                                            shareToGroup();
-                                        }else{
-                                            groupNum = items.length;
-                                            Array.from(items).pop().scrollIntoView();
-                                            setTimeout(showMoreGroups,3000);
-                                        }
-                                    },3000);
-
-                                }
-                                setTimeout(showMoreGroups,3000);
-                                return;
-                            }
-                        }
-                    }
-                });
-                menuobserver.observe(menu, { attributes: false, childList: true, subtree: true });
-            },3000);
         })();
     });
 
