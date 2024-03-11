@@ -1004,17 +1004,13 @@ function master(node){
         const sheetname = directive.ctx.params[0];
         const mode = directive.ctx.params[1]?directive.ctx.params[1]:'追加';//追加,去重
         const distinct= directive.ctx.params[2];
-        if(directive.prev.data){
-            node.post(`api=reportData`,{sheetname,mode,distinct,entries:directive.prev.data,
-                                        varsource:directive.varsource,
-                                        variables:directive.variables,
-                                        atdone:directive.atdone})
-                .then(function(ret){
-                response.send({status:'ok',msg:``});
-            });
-        }else{//没有data直接跳过
-                response.send({status:'ok',msg:``});
-        }
+	node.post(`api=reportData`,{sheetname,mode,distinct,entries:directive.prev.data?directive.prev.data:[],
+				varsource:directive.varsource,
+				variables:directive.variables,
+				atdone:directive.atdone})
+	.then(function(ret){
+		response.send({status:'ok',msg:``});
+	});
     });
 
     //下一个指令
