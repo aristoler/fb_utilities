@@ -320,7 +320,7 @@ function timerTask(){
         }else if(timers[i].interval){
             if(!timers[i].end || timers[i].end > currtime){
                 //定时调度, 过时立即
-                waittime = currtime - scheduledtime >timers[i].interval? 0 : timers[i].interval - (currtime - scheduledtime);
+                waittime = currtime - scheduledtime >timers[i].interval? (currtime >= timers[i].start ? 0 : timers[i].start  - currtime) : timers[i].interval - (currtime - scheduledtime);
                 setTimeout(()=>{
                     timers[i].scheduledtime = new Date().getTime();
                     myCache.set(key,d.getTime().toString());
