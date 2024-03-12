@@ -207,7 +207,7 @@ var isLiving = false;
 function isOnLivePage(){//div[role='dialog']
         if(0==window.location.href.search(liveprefix)
            //下面注释可调试
-           //&& Array.from(document.querySelectorAll("div[role='main'] div[data-pagelet='TahoeVideo'] span")).filter(a=>a.innerText=='直播').length>0
+           && Array.from(document.querySelectorAll("div[role='main'] div[data-pagelet='TahoeVideo'] span")).filter(a=>a.innerText=='直播').length>0
           ){
             isLiving = true;
             return true;
