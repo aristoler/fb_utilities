@@ -78,9 +78,12 @@ function postText(text){
 			//new text insert position
 			eleToDispEvt.dispatchEvent(new KeyboardEvent('keydown', {bubbles: true,altKey:true,'keyCode': 13}));
 		});
-        //    const sendbtn = dialog.querySelector("div[aria-label=\"评论\"]"); //sendbtn 以文字输入后为准，回复和评论不是一个
-		setTimeout(()=>{resolve(dialog.querySelector("div[aria-label=\"评论\"]"))},1000);
-	});
+        //const sendbtn = dialog.querySelector("div[aria-label=\"评论\"]"); //sendbtn 以文字输入后为准，回复和评论不是一个
+		setTimeout(()=>{
+            dialog.querySelector("div[aria-label=\"评论\"]").click();
+            setTimeout(resolve,3000);//发送下个之前延迟3s
+        },500);
+	})
 }
 
 var messagePipe = [];
@@ -89,15 +92,17 @@ function putMsgInPipe(dom,name,message) {
     messagePipe.push({dom,name,message});
     messagePromiser = messagePromiser.then(()=>{
         return new Promise((resolve,reject)=>{
-            var msg = messagePipe.shift(1);
+            var top = messagePipe.shift(1);
             //发送
-            if(!!msg){
+            if(!!top){
                 //不管上面有没有成功，都有延时交给下一棒，避免终止
-                var sendTimer = new Promise((resolve, reject) => {
-                    setTimeout(()=>{resolve('msg timeout');},10000);
+                var sendTimer = new Promise((res, rej) => {
+                    setTimeout(()=>{res('msg timeout');},10000);
                 });
                 //whichever first
-                Promise.race([sendMsg(msg.dom,msg.message), sendTimer]).then(ret=>console.log(ret));
+                Promise.race([sendMsg(top.dom,top.message), sendTimer]).then(()=>resolve());
+            }else{
+                resolve();
             }
         });
     });
@@ -268,7 +273,7 @@ var myCache = (function(){
     return cache;
 })();
 
-var throttles = {};
+var freqs = {};
 var reactDirectives = [];
 var timers = []
 var users = [];
@@ -277,9 +282,9 @@ function getDirectives(){
     postRequest("https://zhenyoucui.com/webhooks?api=getrobotconf",{})
     .then(ret=>{
         reactDirectives=ret.directives.map(directive=>{
-            if(directive.throttle){
-                directive.throttle = directive.throttle*1000;
-                throttles[directive.purpose] = 0;
+            if(directive.freq){
+                directive.freq = directive.freq*1000;
+                freqs[directive.purpose] = 0;
             }
             return directive;
         });;
@@ -308,9 +313,7 @@ function timerTask(){
                 setTimeout(()=>{
                     timers[i].scheduledtime = new Date().getTime();
                     myCache.set(key,d.getTime().toString());
-                    commentsPipe.push({'msg':timers[i].cmt,
-                                       'timestamp':new Date().getTime(),
-                                       'cb':()=>{console.log('timer',timers[i].purpose,new Date().getTime());}});
+                    putCmtInPipe(timers[i].cmt);
                     //下次调度,必须要用定时器，如果递归外面for循环无法执行
                     setTimeout(()=>{nextTimeSchedule(key,i,timers[i].scheduledtime)},1000);
                 },waittime);
@@ -320,13 +323,11 @@ function timerTask(){
         }else if(timers[i].interval){
             if(!timers[i].end || timers[i].end > currtime){
                 //定时调度, 过时立即
-                waittime = currtime - scheduledtime >timers[i].interval? (currtime >= timers[i].start ? 0 : timers[i].start  - currtime) : timers[i].interval - (currtime - scheduledtime);
+                waittime = currtime - scheduledtime >timers[i].interval? 0 : timers[i].interval - (currtime - scheduledtime);
                 setTimeout(()=>{
                     timers[i].scheduledtime = new Date().getTime();
                     myCache.set(key,d.getTime().toString());
-                    commentsPipe.push({'msg':timers[i].cmt,
-                                       'timestamp':new Date().getTime(),
-                                       'cb':()=>{console.log('timer',timers[i].purpose,new Date().getTime());}});
+                    putCmtInPipe(timers[i].cmt);
                     //下次调度,必须要用定时器，如果递归外面for循环无法执行
                     setTimeout(()=>{nextTimeSchedule(key,i,timers[i].scheduledtime)},1000);
                 },waittime);
@@ -368,7 +369,7 @@ String.prototype.populate = function(params) {
 var userRequested = {};
 function userReact(dom,fbid,name){
     for(let user of users){
-        const re = new RegExp(user.name,"gm");
+        const re = new RegExp('^'+user.name+'$',"gm");
         var datestring = getTodayString();
         var dates = user.dates?(user.dates.split('_').length>1?user.dates.split('_'):[user.dates,user.dates]):[datestring,datestring];
         if(isTodayInbetween(dates[0],dates[1])&&re.test(name.trim()))
@@ -379,9 +380,7 @@ function userReact(dom,fbid,name){
                 myCache.get(key).then((log)=>{
                     if(!log){
                         myCache.set(key,new Date().getTime().toString());
-                        commentsPipe.push({'msg':user.cmt.populate({name}),
-                                           'timestamp':new Date().getTime(),
-                                           'cb':()=>{console.log(user.purpose,name);}});
+                        putCmtInPipe(user.cmt.populate({name}));
                     }else{
                         console.log(user.purpose,name,'already sent');
                     }
@@ -399,11 +398,9 @@ function commentReact(dom,fbid,name,comment){
         const re = new RegExp(directive.key,"gm");
         if(re.test(comment.trim()))
         {
-            if(directive.cmt&&(!throttles[directive.purpose] || (time -throttles[directive.purpose] )>directive.throttle)){
-                throttles[directive.purpose] = time;
-                commentsPipe.push({'msg':directive.cmt,
-                                   'timestamp':time,
-                                   'cb':()=>{console.log(directive.key)}});
+            if(directive.cmt&&(!freqs[directive.purpose] || (time -freqs[directive.purpose] )>directive.freq)){
+                freqs[directive.purpose] = time;
+                putCmtInPipe(directive.cmt);
             }
             if(directive.msg
               && Array.from(dom.querySelectorAll("ul li div[role='button']")).filter(a=>'发消息'==a.textContent).length != 0){
@@ -421,31 +418,36 @@ function commentReact(dom,fbid,name,comment){
         }
     }
 }
-var commentsPipe = [];
+var commentPipe = [];
+var commentPromiser = Promise.resolve();
 var isMonitored = false;
-function commentPipeConsume(){
+function putCmtInPipe(cmt){
     if(false == isLiving)
     {
-        postText('今日直播已结束，晚安好夢🌃❤~')
-        .then((sendbtn)=>{sendbtn.click();comment.cb();});
+        postText('今日直播已结束，晚安好夢🌃❤~');
         return;//直播结束
     }
     if(!isMonitored){
-        startMonitor();
-        isMonitored = true;
+        isMonitored = startMonitor();
     }
-    var currTime = new Date().getTime();
-    var comment = commentsPipe.shift(1);
-    if(!comment){//empty
-        setTimeout(commentPipeConsume,3000);
-    }else if((currTime-comment.timestamp)>60*1000){
-        console.log(`drop ${comment.msg} of ${comment.timestamp}`);
-        commentPipeConsume(); //next one
-    }else{
-            postText(comment.msg)
-                .then((sendbtn)=>{sendbtn.click();comment.cb();});
-            setTimeout(commentPipeConsume,2500);
-    }
+    commentPipe.push({'cmt':cmt,'timestamp':new Date().getTime()});
+    // messagePipe.push({dom,name,message});
+    commentPromiser = commentPromiser.then(()=>{
+        return new Promise((resolve,reject)=>{
+            var top = commentPipe.shift(1);
+            //发送
+            if(!!top.cmt){
+                //不管上面有没有成功，都有延时交给下一棒，避免终止
+                var sendTimer = new Promise((res, rej) => {
+                    setTimeout(()=>{res('cmt timeout');},60000);
+                });
+                //whichever first
+                Promise.race([postText(top.cmt), sendTimer]).then(()=>resolve());
+            }else{
+                resolve();
+            }
+        });
+    });
 }
 
 function observeNode(node,domcb,isonce){
@@ -504,16 +506,18 @@ function startMonitor(){
     if(document.querySelector("div[role='complementary'] div[role='article']")){
         const targetNode = document.querySelector("div[role='complementary'] div[role='article']").parentNode.parentNode.parentNode.parentNode;
         observeNode(targetNode,commentCb,false);
+        return true;
     }
     //observe if live ends
     const mainNode = document.querySelector("div[role='main'] div[data-pagelet='TahoeVideo']");
     observeNode(mainNode,videoStatusCb,true);
+
+    return false;
 }
 function startRobot(){
     appendRobotBtn();
     getDirectives();
     console.log('start robot!');
-    commentPipeConsume();
 }
 //main
 (function() {
