@@ -1134,7 +1134,7 @@ function slave(node){
         //切入视图中间
         let headerHeight = document.querySelector("div[role=\"navigation\"]").getBoundingClientRect().height*2;
         //scroll into view then offset the header
-        document.querySelector("div[aria-label*=\"正在觀看這段影片\"]").scrollIntoView();
+        document.querySelector("div[aria-label*=\"人正在\"]").scrollIntoView();
         window.scrollBy(0,-headerHeight);
         //滚动有延时
         node.callMeLater(3*1000,()=>{
@@ -1145,9 +1145,9 @@ function slave(node){
     //页面点击观看直播
     node.onDirective('进入直播',function(node,directive,response){
         console.log(`[--dir--]:${getCurrTime()}>>${directive.name}(${directive.ctx.params.join(',')}）`);
-        let islive = document.querySelector("div[aria-label*=\"正在觀看這段影片\"]");
+        let islive = document.querySelector("div[aria-label*=\"人正在\"]");
         if(islive){
-            let zoombtn = document.querySelector("div[aria-label*=\"正在觀看這段影片\"]")
+            let zoombtn = document.querySelector("div[aria-label*=\"人正在\"]")
             .parentElement.parentElement.querySelector("a");
             console.log(zoombtn);
             if(zoombtn){
