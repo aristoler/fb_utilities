@@ -1272,8 +1272,8 @@ function slave(node){
     node.onDirective('私信',function(node,directive,response){
         console.log(`[--dir--]:${getCurrTime()}>>${directive.name}(${directive.ctx.params.join(',')}）`);
         let comment = directive.ctx.params[0];
-        let couldFriend = document.querySelector("div[aria-label='加朋友']");
-        let couldMsg = document.querySelector("div[aria-label='發送訊息']");
+        let couldFriend = document.querySelector("div[aria-label='添加好友']");
+        let couldMsg = document.querySelector("div[aria-label='发消息']");
         if(null !=couldFriend)
         {
             couldFriend.click();
