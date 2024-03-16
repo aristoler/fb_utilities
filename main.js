@@ -148,14 +148,17 @@ function postImage (inputElement,imageUrl){
 }
 function observeNode(node,domcb,isonce){
     const config = { attributes: false, childList: true, subtree: true };
+    var ishappened = false;
     const callback = (mutationList, observer) => {
         for (const mutation of mutationList) {
             if (mutation.type === "childList") {
                 //console.log("A child node has been added or removed.",mutation.addedNodes);
                 for(var i=0;i<mutation.addedNodes.length;i++){
                     var dom = mutation.addedNodes[i];
-                    if(domcb(dom)&&isonce){
+                    ishappened = domcb(dom,ishappened);
+                    if(ishappened&&isonce){
                         observer.disconnect();
+                        return; //stop looping
                     }
                 }
             }
@@ -1151,12 +1154,7 @@ function slave(node){
             .parentElement.parentElement.querySelector("a");
             console.log(zoombtn);
             if(zoombtn){
-                const clickEvent = new MouseEvent('click', {
-                    bubbles: true,
-                    cancelable: false,//false进入详情页(a默认行为)，true是弹出框(fb拦截了默认行为）
-                    view: unsafeWindow
-                });
-                zoombtn.dispatchEvent(clickEvent);
+                zoombtn.click();
             }
         }
 
@@ -1272,8 +1270,8 @@ function slave(node){
     node.onDirective('私信',function(node,directive,response){
         console.log(`[--dir--]:${getCurrTime()}>>${directive.name}(${directive.ctx.params.join(',')}）`);
         let comment = directive.ctx.params[0];
-        let couldFriend = document.querySelector("div[aria-label='添加好友']");
-        let couldMsg = document.querySelector("div[aria-label='发消息']");
+        let couldFriend = document.querySelector("div[aria-label='加朋友']");
+        let couldMsg = document.querySelector("div[aria-label='發送訊息']");
         if(null !=couldFriend)
         {
             couldFriend.click();
@@ -1310,42 +1308,43 @@ function slave(node){
         (function publishOneToGroup(){
             //监听小组列表框
             var isgroupfound = false;
-            observeNode(document.querySelector("div[role='banner']").nextSibling.nextSibling,(dom)=>{
+            observeNode(document.querySelector("div[role='banner']").nextSibling.nextSibling,(dom,ishappened)=>{
                 var dialog = document.querySelector("div[role='dialog'] div[aria-label='分享到小组'");
                 var items = document.querySelectorAll("div[role='dialog'] div[role='list'] div[role='listitem'] div[role='button']");
                 var [group] = Array.from(items).filter(item=>item.querySelectorAll("span")[0].textContent == groupname);
                 //var sendbtn = document.querySelector("div[role='dialog'] form div[aria-label='发布']");
-                if(!!dialog&&!!group&&!isgroupfound){
+                if(!!dialog&&!!group&&!isgroupfound&&!ishappened){
                     //found
                     isgroupfound = true;
                     group.scrollIntoView();
                     group.style.backgroundColor="yellow"
                     console.log(`${groupname},${group.querySelectorAll("span")[1].textContent}`);
                     //监听可发送按钮
-                    observeNode(document.querySelector("div[role='banner']").nextSibling.nextSibling,(dom)=>{
+                    observeNode(document.querySelector("div[role='banner']").nextSibling.nextSibling,(dom,ishappened)=>{
                         var sendbtn = document.querySelector("div[role='dialog'] form div[aria-label='发布']");
                         var closebtn = document.querySelector("div[role='dialog'] form div[aria-label='关闭']");
-                        if(!!sendbtn){
+                        if(!!sendbtn&&!ishappened){
                             sendbtn.click();
+                            console.log(groupname);
                             //closebtn.click();
                             response.send({status:'ok',msg:``,data:[]});
                             return true;
                         }
-                        return false;
+                        return ishappened;
                     },true);
                     //点击小组
                     console.log('click group item');
                     group.click();
                     return true;
-                }else if(!!dialog){
+                }else if(!!dialog&&!ishappened){
                     //show more
                     Array.from(items).pop().scrollIntoView();
                 }
-                return false;
+                return ishappened;
             },true);
 
             //监听分享小组选项
-            observeNode(document.querySelector("div[role='banner']").nextSibling,(dom)=>{
+            observeNode(document.querySelector("div[role='banner']").nextSibling,(dom,ishappened)=>{
                 var [morebtn] = Array.from(dom.querySelectorAll("div[aria-label='分享选项'] div[role='button']")).filter(a=>a.textContent == '更多选项');
                 var [groupbtn] = Array.from(dom.querySelectorAll("div[aria-label='分享选项'] div[role='button']")).filter(a=>a.textContent == '分享到小组');
                 if(!!groupbtn){
@@ -1357,7 +1356,7 @@ function slave(node){
                     console.log('click more btn');
                     morebtn.click();
                 }
-                return false;
+                return ishappened;
             },true);
             //点击分享按钮
             var sharebtn = document.querySelector("div[aria-label*='发送']");
