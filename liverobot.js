@@ -202,7 +202,7 @@ function appendRobotBtn(){
 
 //https://www.facebook.com/100093579038987/videos/
 //https://www.facebook.com/zycfc/videos/
-var liveprefix = 'https://www.facebook.com/zycfc/videos/';
+var liveprefix = 'https://www.facebook.com/100093579038987/videos/';
 var isLiving = false;
 function isOnLivePage(){//div[role='dialog']
         if(0==window.location.href.search(liveprefix)
@@ -212,8 +212,8 @@ function isOnLivePage(){//div[role='dialog']
             isLiving = true;
             return true;
         }else{
-            isLiving = false;
-            return false;
+            isLiving = true;
+            return true;
         }
 }
 function isRobotExist(){
@@ -243,7 +243,7 @@ var myCache = (function(){
             //set 同步，不保证远程缓存设置成功
             cache.data[key] = val;
             localStorage.setItem(key,val);
-            postRequest("https://zhenyoucui.com/webhooks?api=setcache",{key,val});
+            postRequest("https://zhenyoucui.com/zhenserver?api=setcache",{key,val});
         }
     })();
     cache.get = (()=>{
@@ -253,20 +253,20 @@ var myCache = (function(){
                 //const local = localStorage.getItem(key);
                 const local = null;
                 if(!local){
-                    return postRequest(`https://zhenyoucui.com/webhooks?api=getcache`,{key})
+                    return postRequest(`https://zhenyoucui.com/zhenserver?api=getcache`,{key})
                         .then((ret)=>{
                         cache.data[key] = ret.data;
                         localStorage.setItem(key,ret.data);
-                        return Promise.resolve(ret.data);
+                        return new Promise((resolve,reject)=>{resolve({key,data:ret.data})});
                     });
                 }else{
                     cache.data[key] = local;
                     localStorage.setItem(key,local);
-                    return new Promise((resolve,reject)=>{resolve(local);});
+                    return new Promise((resolve,reject)=>{resolve({key,data:local});});
                 }
             }else{
                 localStorage.setItem(key,cache.data[key]);
-                return new Promise((resolve,reject)=>{resolve(cache.data[key]);});
+                return new Promise((resolve,reject)=>{resolve({key,data:cache.data[key]});});
             }
         }
     })();
@@ -278,8 +278,10 @@ var reactDirectives = [];
 var timers = []
 var users = [];
 var allcomments = [];
+var allusers = [];
+
 function getDirectives(){
-    postRequest("https://zhenyoucui.com/webhooks?api=getrobotconf",{})
+    postRequest("https://zhenyoucui.com/zhenserver?api=getrobotconf",{})
     .then(ret=>{
         reactDirectives=ret.directives.map(directive=>{
             if(directive.freq){
@@ -298,6 +300,12 @@ function getDirectives(){
         });
         timerTask();
         users=ret.users;
+    });
+}
+function getUsers(){
+    postRequest("https://zhenyoucui.com/zhenserver?api=getusers",{})
+    .then(ret=>{
+        allusers = ret;
     });
 }
 
@@ -341,18 +349,19 @@ function timerTask(){
         if(timer.dates.map(d=>new Date(d)-new Date().toLocaleDateString()).reduce((acc,cur)=>acc*cur,1)>0){
             return;
         }
-        var key = `${d.getFullYear()}-${d.getMonth()+1}-${d.getDate()}_${timer.purpose}`;
-        setTimeout(()=>{
-            myCache.get(key).then((scheduledtime)=>{
-                console.log(key,scheduledtime);
-                nextTimeSchedule(key,i,scheduledtime);
+        var key = `${getTodayString()}_${timer.purpose}`;
+        ((key,i)=>{
+            myCache.get(key).then((ret)=>{
+                console.log(ret.key,ret.data);
+                nextTimeSchedule(ret.key,i,ret.data);
             });
-        },i*1000*5);//错开5s,避免同时发送
+        })(key,i);
     });
 }
 function getTodayString(){
     var d = new Date();
-    return `${d.getFullYear()}-${d.getMonth()+1}-${d.getDate()}`;
+    d.setHours(d.getHours() - 3); //可能跨12点
+    return `${d.getFullYear()}-${(d.getMonth()+1).toString().padStart(2,"0")}-${d.getDate().toString().padStart(2,"0")}`;
 }
 function isTodayInbetween(d1,d2){
     return ![d1,d2].map(d=>new Date(d)-new Date().toLocaleDateString()).reduce((acc,cur)=>acc*cur,1)>0;
@@ -360,35 +369,52 @@ function isTodayInbetween(d1,d2){
 String.prototype.populate = function(params) {
   const names = Object.keys(params);
   const vals = Object.values(params);
+  var variables = {};
   var result = this.toString();
-  for(let [key,value] of Object.entries(params)){
+  if(result.match(/\$\{([^\}]+)\}/gm)){
+      variables = result.match(/\$\{([^\}]+)\}/gm).map(m=>m.substring(2,m.length-1)).reduce((acc,cur)=>{acc[cur]='';return acc;},{})
+  }
+  for(let [key,value] of Object.entries(Object.assign(variables,params))){
 	result = result.replaceAll('${'+key+'}',value)
   }
   return result;
 }
 var userRequested = {};
 function userReact(dom,fbid,name){
+    var promises = [];
     for(let user of users){
-        const re = new RegExp('^'+user.name+'$',"gm");
+        var names = user.names.populate(allusers);
         var datestring = getTodayString();
         var dates = user.dates?(user.dates.split('_').length>1?user.dates.split('_'):[user.dates,user.dates]):[datestring,datestring];
-        if(isTodayInbetween(dates[0],dates[1])&&re.test(name.trim()))
+        if(isTodayInbetween(dates[0],dates[1])&&(names.search('!'+name.trim()+'!')>=0||user.names=='')) //老粉/新粉
         {
             var key = `${user.purpose}_${name}_${dates.join('_')}`;
             if(!userRequested[key]){ //触发远程cache有时延，避免多次请求
                 userRequested[key]=true;
-                myCache.get(key).then((log)=>{
-                    if(!log){
-                        myCache.set(key,new Date().getTime().toString());
-                        putCmtInPipe(user.cmt.populate({name}));
-                    }else{
-                        console.log(user.purpose,name,'already sent');
+                //promise to request one by one
+                var promisefunc = (function(key,user,allusers,name){
+                    //wrap a function to delay rrun
+                    return ()=>{
+                        return myCache.get(key).then((ret)=>{
+                            if(!ret.data){
+                                myCache.set(ret.key,new Date().getTime().toString());
+                                putCmtInPipe(user.cmt.populate(Object.assign({name}, allusers.all[name])));
+                            }else{
+                                console.log(user.purpose,name,'already sent');
+                            }
+                        });
                     }
-                });
+                })(key,user,allusers,name);
+                if(user.names == '' && promises.length == 0){
+                    promises.push(promisefunc);
+                }else if(user.names != '' ){
+                    promises.push(promisefunc);
+                }
             }
         }
-
     }
+    //execute all promises
+    promises.reduce((acc,cur)=>acc.then(()=>cur()),Promise.resolve());
 }
 
 function commentReact(dom,fbid,name,comment){
@@ -398,14 +424,6 @@ function commentReact(dom,fbid,name,comment){
         const re = new RegExp(directive.key,"gm");
         if(re.test(comment.trim()))
         {
-            if(directive.cmt&&(!freqs[directive.purpose] || (time -freqs[directive.purpose] )>directive.freq)){
-                freqs[directive.purpose] = time;
-                putCmtInPipe(directive.cmt);
-            }
-            if(directive.msg
-              && Array.from(dom.querySelectorAll("ul li div[role='button']")).filter(a=>'发消息'==a.textContent).length != 0){
-                putMsgInPipe(dom,name,directive.msg)
-            }
             if(directive.like
               && Array.from(dom.querySelectorAll("ul li div[role='button']")).filter(a=>'赞'==a.textContent).length != 0){
                 setTimeout(()=>{Array.from(dom.querySelectorAll("ul li div[role='button']")).filter(a=>'赞'==a.textContent)[0].click();},1000);
@@ -414,21 +432,24 @@ function commentReact(dom,fbid,name,comment){
                && Array.from(dom.querySelectorAll("ul li div[role='button']")).filter(a=>'回复'==a.textContent).length != 0){
                 sendReply(dom,name,directive.msg);
             }
+            if(directive.cmt&&(!freqs[directive.purpose] || (time -freqs[directive.purpose] )>directive.freq)){
+                freqs[directive.purpose] = time;
+                putCmtInPipe(directive.cmt);
+            }
+            if(directive.msg
+              && Array.from(dom.querySelectorAll("ul li div[role='button']")).filter(a=>'发消息'==a.textContent).length != 0){
+                putMsgInPipe(dom,name,directive.msg)
+            }
             break;//match then break
         }
     }
 }
 var commentPipe = [];
 var commentPromiser = Promise.resolve();
-var isMonitored = false;
 function putCmtInPipe(cmt){
     if(false == isLiving)
     {
-        postText('今日直播已结束，晚安好夢🌃❤~');
         return;//直播结束
-    }
-    if(!isMonitored){
-        isMonitored = startMonitor();
     }
     commentPipe.push({'cmt':cmt,'timestamp':new Date().getTime()});
     // messagePipe.push({dom,name,message});
@@ -491,14 +512,17 @@ function commentCb(dom){
     commentReact(dom,fbid,name,comment);
     return true;
 }
-function videoStatusCb(dom){
-    if(dom.textContent&&dom.textContent.search("结束")>0){
-        console.log('结束了');
-        isLiving = false;
-        return true;
-    }else{
-        return false;
-    }
+function liveStatusMonitor(){
+    postRequest("https://zhenyoucui.com/zhenserver?api=getlivestatus",{video_id:window.location.href.split('/').pop()})
+    .then(ret=>{
+        if(ret.status == 'stopped'){
+            postText('今日直播已结束，晚安好夢🌃❤~');
+            isLiving = false;
+        }else{
+            setTimeout(liveStatusMonitor,1*60*1000);
+        }
+    });
+
 }
 
 function startMonitor(){
@@ -506,17 +530,20 @@ function startMonitor(){
     if(document.querySelector("div[role='complementary'] div[role='article']")){
         const targetNode = document.querySelector("div[role='complementary'] div[role='article']").parentNode.parentNode.parentNode.parentNode;
         observeNode(targetNode,commentCb,false);
-        return true;
+        //observe if live ends
+        // const mainNode = document.querySelector("div[role='main'] div[data-pagelet='TahoeVideo']");
+        // observeNode(mainNode,videoStatusCb,false);
+        liveStatusMonitor();
+    }else{
+        setTimeout(startMonitor,1000);
     }
-    //observe if live ends
-    const mainNode = document.querySelector("div[role='main'] div[data-pagelet='TahoeVideo']");
-    observeNode(mainNode,videoStatusCb,true);
-
-    return false;
 }
 function startRobot(){
     appendRobotBtn();
+    getUsers();
     getDirectives();
+    startMonitor();
+
     console.log('start robot!');
 }
 //main
