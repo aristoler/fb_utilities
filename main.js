@@ -167,6 +167,32 @@ function observeNode(node,domcb,isonce){
     const observer = new MutationObserver(callback);
     observer.observe(node, config);
 }
+function observeText(node,domcb,isonce){
+    const config = {characterData: true, attributes: false, childList: true, subtree: true };
+    let ishappened = false;
+    const callback = (mutationList, observer) => {
+        for (const mutation of mutationList) {
+			//console.log(mutation)
+            if (mutation.type === "characterData") {
+				ishappened = domcb(mutation.target,ishappened);
+				if(ishappened&&isonce){
+					observer.disconnect();
+					return; //stop looping
+				}
+            }else if(mutation.type === "childList"){
+				for(let i=0;i<mutation.removedNodes.length;i++){
+					ishappened = domcb(mutation.target,ishappened);
+					if(ishappened&&isonce){
+						observer.disconnect();
+						return; //stop looping
+					}
+				}
+			}
+        }
+    };
+    const observer = new MutationObserver(callback);
+    observer.observe(node, config);
+}
 function createNode(role,fbid){
 
     const namespace = 'zzyycc';
@@ -752,73 +778,107 @@ function createScraper(n){
         }
     })();
 
-    //评论翻页
-    scraper.showAllCommentsPromise = (()=>{
-        return function (){
-            return new Promise((resolve,reject)=>{
-                let counts = 0;
-                node.callMeLater(3000,function scroll(){
-                    let delayRandom = 3+Math.random()*7;
-                    let nums = document.querySelectorAll("div[role=\"complementary\"] div[style=\"height: auto;\"]>ul>li").length;
-                    console.log(`new num ${nums - counts}`);
-                    counts = nums;
-                    //next page
-                    let morebtn = document.querySelector("div[role=\"complementary\"] div[role=\"button\"]>span>span[dir=\"auto\"]");
-                    if(!!morebtn){
-                        morebtn.scrollIntoView();
-                        morebtn.click();
-                        node.callMeLater(delayRandom*1000,scroll);
-                    }else{
-                        console.log(`total num ${counts}`);
-                        resolve(counts);
-                    }
-                });
-            });//end of promise
-        }// end of function
-    })();
-
-
     //获取评论列表信息
     scraper.getAllComments = (()=>{
         return function (){
-            let timedom = document.querySelector("div[role=\"complementary\"] span>span>span>span>a[role=\"link\"]>span" );
-            // let posttime = [...timedom.querySelectorAll("span")].filter((d)=>{
-            // 	return !(d.getBoundingClientRect().top > timedom.getBoundingClientRect().bottom
-            // 	|| d.getBoundingClientRect().left > timedom.getBoundingClientRect().right
-            // 	|| d.getBoundingClientRect().width == timedom.getBoundingClientRect().width)
-            // })
-            // .sort((a,b)=> a.getBoundingClientRect().left>b.getBoundingClientRect().left?1:-1)
-            // .map(n=>n.textContent).join('');
-            let hiddendomId = timedom.querySelector("span[aria-labelledby]").getAttribute('aria-labelledby');
-            let posttime = document.querySelector(`span[id=\"${hiddendomId}\"]`).textContent;
+           function getAllCmts (){
+                let acctname = document.querySelector("div[role=\"complementary\"] h2 strong" ).textContent;
+                let posttime = document.querySelector("div[role=\"complementary\"] span>span>span>span>a[role=\"link\"]>span" ).textContent;
+                let posturl = window.location.href;
+                let comments=[...document.querySelectorAll("div[role=\"complementary\"] div[role='article']")]
+                .map((dom)=>{
 
-            let comments=[...document.querySelectorAll("div[role=\"complementary\"] div[style=\"height: auto;\"]>ul>li")]
-            .map((dom)=>{
+                    //帖子账号
+                    let name= acctname;
+                    //帖子时间
+                    let time = posttime;
+                    //帖子链接
+                    let href = posturl;
+                    //评论
+                    //头像
+                    let avatar = dom.querySelector("svg g image").getAttribute("xlink:href");
+                    //fburl
+                    let m= dom.querySelectorAll("a")[0].href.match(/(.+)[&\?]comment_id=([^&]+)&.*/);
+                    let fburl = m[1];
+                    let commentid=m[2];
+                    //名称
+                    let username = dom.querySelectorAll("a")[1].textContent;
+                    //评论
+                    let comment = dom.querySelector("span[dir=\"auto\"]>div" )?dom.querySelector("span[dir=\"auto\"]>div" ).textContent:'动图';
+                    //评论时间,可能没有
+                    let commenttime =dom.querySelector("span>span>div" )?dom.querySelector("span>span>div" ).textContent:'';
+                    let updatedat = new Date().toISOString().split('.')[0].replace('T',' ');
+                    return [name,time,href,avatar,username,fburl,commentid,comment,commenttime,updatedat];
+                });
+                return comments;
+            }
+            let	showlatest = ()=>{
+                return new Promise((resolve,reject)=>{
+                    const showbtn = document.querySelector("div[role='button']>span>div>div>i")?document.querySelector("div[role='button']>span>div>div>i").closest("span"):null;
+                    if(!showbtn){
+                        resolve();
+                    }
+                    const menudom = document.querySelector("div[role='dialog'][aria-label*='工具']").nextSibling;
+                    //展开选项
+                    observeNode(menudom,(dom,ishappened)=>{
+                        const [lastestbtn] = Array.from(document.querySelectorAll("div[role='menu'] div[role='menuitem']")).filter(a=>a.textContent.search('最新显示所有评论')==0);
+                        if(lastestbtn){
+                            //选择最新
+                            lastestbtn.click();
+                            return true;
+                        }
+                        return ishappened;
+                    },true);
 
-                //帖子账号
-                let name= document.querySelector("div[role=\"complementary\"] h2 strong" ).textContent;
-                //帖子时间
-                let time = posttime;
-                //帖子链接
-                let href = window.location.href;
-                //评论
-                //头像
-                let avatar = dom.querySelector("svg g image").getAttribute("xlink:href");
-                //fburl
-                let m= dom.querySelectorAll("a")[0].href.match(/(.+)[&\?]comment_id=([^&]+)&.*/);
-                let fburl = m[1];
-                let commentid=m[2];
-                //名称
-                let username = dom.querySelectorAll("a")[1].textContent;
-                //评论
-                let comment = dom.querySelector("span[dir=\"auto\"]>div" )?dom.querySelector("span[dir=\"auto\"]>div" ).textContent:'动图';
-                //评论时间
-                let commenttime =dom.querySelector("ul>li:last-child" ).textContent;
-                // dom.querySelector("span>div[role=\"button\"]").textContent;
-                let updatedat = getCurrDate();
-                return [name,time,href,avatar,username,fburl,commentid,comment,commenttime,updatedat];
-            });
-            return comments;
+                    //最新切换完成
+                    observeText(showbtn,(dom,ishappened)=>{
+                        if('最新'==dom.textContent){
+                            //console.log(dom.textContent);
+                            resolve();
+                            return true;
+                        }
+                        return ishappened;
+                    },true);
+
+                    //点击选项
+                    showbtn .click();
+                });
+            }
+
+            let showallcmts = ()=>{
+                return new Promise((resolve,reject)=>{
+                    const iscmt = document.querySelector("div[role='complementary'] div[role='article']");
+                    if(!iscmt){
+                        console.log('no comments');
+                        return resolve([]);
+                    }
+                    const cmtcontainter = iscmt.closest("div[style*='height']");
+                    const [morezone] = [...cmtcontainter.children].filter(a=>'更多评论'==a.textContent.substring(0,4));
+                    if(!morezone){
+                        console.log('no more comments');
+                        return resolve(getAllCmts());
+                    }
+                    observeText(morezone,(dom,ishappened)=>{
+                        const morecmt = morezone.querySelector("div>span");
+                        console.log(dom.textContent);
+                        if(!morecmt){
+                            console.log('show all comments');
+                            resolve(getAllCmts());
+                            return true;
+                        }else{
+                            morecmt.scrollIntoView();
+                            morecmt.click();
+                        }
+                        return ishappened;
+                    },true);
+                    console.log('show more comments');
+                    const morecmt = morezone.querySelector("div>span");
+                    morecmt.scrollIntoView();
+                    morecmt.click();
+                });
+            }
+            //返回全部评论
+            return showlatest().then(()=>showallcmts());
         }
     })();
 
@@ -1165,15 +1225,10 @@ function slave(node){
     node.onDirective('评论直播',function(node,directive,response){
         console.log(`[--dir--]:${getCurrTime()}>>${directive.name}(${directive.ctx.params.join(',')}）`);
         //缓一下重新点击
-        let cmntbtn = document.querySelector("div[aria-label=\"留言\"]");
+        let cmntbtn = document.querySelector("div[aria-label*=\"评论\"]");
             //document.querySelector("div[role=\"dialog\"]").querySelector("div[aria-label=\"播放\"]");
         if(cmntbtn){
-            const clickEvent = new MouseEvent('click', {
-                bubbles: true,
-                cancelable: true,
-                view: unsafeWindow
-            });
-            cmntbtn.dispatchEvent(clickEvent);
+            cmntbtn.click();
         }
         response.send({status:'ok',msg:``})
     });
@@ -1303,15 +1358,19 @@ function slave(node){
     //分享到小組
     node.onDirective('分享小组',function(node,directive,response){
         console.log(`[--dir--]:${getCurrTime()}>>${directive.name}(${directive.ctx.params.join(',')}）`);
-        let groupname = directive.ctx.params[0]; //index from 1
+        let groupname = directive.ctx.params[0];
+        let moretry = 1;
         //wait between publishs
         (function publishOneToGroup(){
-            //监听小组列表框
+           //wait between publishs
+        (function publishOneToGroup(){
+                //监听小组列表框
             var isgroupfound = false;
             observeNode(document.querySelector("div[role='banner']").nextSibling.nextSibling,(dom,ishappened)=>{
                 var dialog = document.querySelector("div[role='dialog'] div[aria-label='分享到小组'");
                 var items = document.querySelectorAll("div[role='dialog'] div[role='list'] div[role='listitem'] div[role='button']");
                 var [group] = Array.from(items).filter(item=>item.querySelectorAll("span")[0].textContent == groupname);
+				//console.log('!!dialog&&!!group&&!isgroupfound&&!ishappened,moretry',!!dialog,!!group,!isgroupfound,!ishappened,moretry);
                 //var sendbtn = document.querySelector("div[role='dialog'] form div[aria-label='发布']");
                 if(!!dialog&&!!group&&!isgroupfound&&!ishappened){
                     //found
@@ -1338,7 +1397,14 @@ function slave(node){
                     return true;
                 }else if(!!dialog&&!ishappened){
                     //show more
-                    Array.from(items).pop().scrollIntoView();
+					if(moretry || document.querySelector("div[role='dialog'] div[role='list']").querySelector(":scope > div[role='status']")){
+						Array.from(items).pop().scrollIntoView();
+						moretry -= 1;
+					}else{
+						console.log(groupname,'not found');
+						response.send({status:'ok',msg:`${groupname} not found`,data:[]});
+						return true;
+					}
                 }
                 return ishappened;
             },true);
@@ -1362,7 +1428,7 @@ function slave(node){
             var sharebtn = document.querySelector("div[aria-label*='发送']");
             console.log('click sharebtn');
             sharebtn.click();
-        })();
+        })(groupname,moretry);
     });
 
     //分享到动态
@@ -1508,22 +1574,21 @@ function slave(node){
     //进入直播列表
     node.onDirective('进入直播列表',function(node,directive,response){
         console.log(`[--dir--]:${getCurrTime()}>>${directive.name}(${directive.ctx.params.join(',')}）`);
-        node.actThenWait(-1,(done)=>{//act
-            if(0===document.querySelectorAll("div[role=\"menu\"] a[role=\"menuitemradio\"]").length){
-                document.querySelector("div[aria-haspopup=\"menu\"]").click();
-            }
-            done();
-        },()=>{//wait
-            return document.querySelectorAll("div[role=\"menu\"] a[role=\"menuitemradio\"]").length>0?true:false;
-        }).then((ret)=>{
-            document.querySelectorAll("div[role=\"menu\"] a[role=\"menuitemradio\"]").forEach((dom)=>{
-                if(dom.textContent.indexOf("直播")==0)
-                {
-                    dom.click();
-                    node.callMeLater(3000,()=>{response.send({status:'ok',msg:``});});//等加载
-                }
-            });
-        });
+
+        var menuelement = document.querySelector("div[role='main']").parentElement.parentElement.parentElement.children[1];
+        observeNode(menuelement,(dom,ishappened)=>{
+                        if(dom.querySelectorAll("div[role=\"menu\"] a[role=\"menuitemradio\"]").length>0){
+                           const [livebtn] = Array.from(dom.querySelectorAll("div[role=\"menu\"] a[role=\"menuitemradio\"]"))
+                           .filter(dom=>dom.textContent=="直播");
+                           if(livebtn){
+                               livebtn.click();
+                               node.callMeLater(3000,()=>{response.send({status:'ok',msg:``});});//等加载
+                           }
+                            return true;
+                        }
+                        return ishappened;
+                    },true);
+        document.querySelector("div[aria-haspopup=\"menu\"]").click();
     });
 
     //获取直播列表
@@ -1543,13 +1608,8 @@ function slave(node){
     node.onDirective('获取评论列表',function(node,directive,response){
         console.log(`[--dir--]:${getCurrTime()}>>${directive.name}(${directive.ctx.params.join(',')}）`);
         const scraper = createScraper(node);
-        scraper.showAllCommentsPromise().then((nums)=>{
-            let comments = scraper.getAllComments();
-            scraper.showAllLikesPromise().then((nums)=>{
-                let likes = scraper.getAllLikes();
-                // console.log(videos);
-                response.send({status:'ok',msg:``,data:comments.concat(likes)})
-            });
+        scraper.getAllComments().then((comments)=>{
+            response.send({status:'ok',msg:``,data:comments})
         });
     });
 
