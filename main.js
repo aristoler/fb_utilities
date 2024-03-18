@@ -148,13 +148,13 @@ function postImage (inputElement,imageUrl){
 }
 function observeNode(node,domcb,isonce){
     const config = { attributes: false, childList: true, subtree: true };
-    var ishappened = false;
+    let ishappened = false;
     const callback = (mutationList, observer) => {
         for (const mutation of mutationList) {
             if (mutation.type === "childList") {
                 //console.log("A child node has been added or removed.",mutation.addedNodes);
-                for(var i=0;i<mutation.addedNodes.length;i++){
-                    var dom = mutation.addedNodes[i];
+                for(let i=0;i<mutation.addedNodes.length;i++){
+                    let dom = mutation.addedNodes[i];
                     ishappened = domcb(dom,ishappened);
                     if(ishappened&&isonce){
                         observer.disconnect();
@@ -833,7 +833,7 @@ function createScraper(n){
                     //最新切换完成
                     observeText(showbtn,(dom,ishappened)=>{
                         if('最新'==dom.textContent){
-                            //console.log(dom.textContent);
+                            console.log(dom.textContent);
                             resolve();
                             return true;
                         }
@@ -874,7 +874,7 @@ function createScraper(n){
                     console.log('show more comments');
                     const morecmt = morezone.querySelector("div>span");
                     morecmt.scrollIntoView();
-                    morecmt.click();
+                    setTimeout(()=>morecmt.click(),1000);//避免事件没有绑定
                 });
             }
             //返回全部评论
@@ -1359,8 +1359,7 @@ function slave(node){
     node.onDirective('分享小组',function(node,directive,response){
         console.log(`[--dir--]:${getCurrTime()}>>${directive.name}(${directive.ctx.params.join(',')}）`);
         let groupname = directive.ctx.params[0];
-        let moretry = 1;
-        //wait between publishs
+                //wait between publishs
         (function publishOneToGroup(){
                 //监听小组列表框
             var isgroupfound = false;
@@ -1368,7 +1367,7 @@ function slave(node){
                 var dialog = document.querySelector("div[role='dialog'] div[aria-label='分享到小组'");
                 var items = document.querySelectorAll("div[role='dialog'] div[role='list'] div[role='listitem'] div[role='button']");
                 var [group] = Array.from(items).filter(item=>item.querySelectorAll("span")[0].textContent == groupname);
-				//console.log('!!dialog&&!!group&&!isgroupfound&&!ishappened,moretry',!!dialog,!!group,!isgroupfound,!ishappened,moretry);
+				console.log('!!dialog&&!!group&&!isgroupfound&&!ishappened',!!dialog,!!group,!isgroupfound,!ishappened);
                 //var sendbtn = document.querySelector("div[role='dialog'] form div[aria-label='发布']");
                 if(!!dialog&&!!group&&!isgroupfound&&!ishappened){
                     //found
@@ -1395,14 +1394,7 @@ function slave(node){
                     return true;
                 }else if(!!dialog&&!ishappened){
                     //show more
-					if(moretry || document.querySelector("div[role='dialog'] div[role='list']").querySelector(":scope > div[role='status']")){
-						Array.from(items).pop().scrollIntoView();
-						moretry -= 1;
-					}else{
-						console.log(groupname,'not found');
-						response.send({status:'ok',msg:`${groupname} not found`,data:[]});
-						return true;
-					}
+					Array.from(items).pop().scrollIntoView();
                 }
                 return ishappened;
             },true);
@@ -1426,7 +1418,7 @@ function slave(node){
             var sharebtn = document.querySelector("div[aria-label*='发送']");
             console.log('click sharebtn');
             sharebtn.click();
-        })(groupname,moretry);
+        })(groupname);
     });
 
     //分享到动态
