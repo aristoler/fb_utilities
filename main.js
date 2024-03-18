@@ -1229,11 +1229,11 @@ function slave(node){
             //document.querySelector("div[role=\"dialog\"]").querySelector("div[aria-label=\"播放\"]");
         if(cmntbtn){
             cmntbtn.click();
+            response.send({status:'ok',msg:``})
         }
-        response.send({status:'ok',msg:``})
     });
     //监听直播观众
-        node.onDirective('监听直播观众',function(node,directive,response){
+    node.onDirective('监听直播观众',function(node,directive,response){
             console.log(`[--dir--]:${getCurrTime()}>>${directive.name}(${directive.ctx.params.join(',')}）`);
             const sheetname = directive.ctx.params[0];
             const mode = directive.ctx.params[1];
@@ -1361,8 +1361,6 @@ function slave(node){
         let groupname = directive.ctx.params[0];
         let moretry = 1;
         //wait between publishs
-        (function publishOneToGroup(){
-           //wait between publishs
         (function publishOneToGroup(){
                 //监听小组列表框
             var isgroupfound = false;
@@ -1605,11 +1603,25 @@ function slave(node){
     });
 
     //获取评论列表(含赞)
-    node.onDirective('获取评论列表',function(node,directive,response){
+    node.onDirective('获取评论',function(node,directive,response){
         console.log(`[--dir--]:${getCurrTime()}>>${directive.name}(${directive.ctx.params.join(',')}）`);
         const scraper = createScraper(node);
         scraper.getAllComments().then((comments)=>{
             response.send({status:'ok',msg:``,data:comments})
+        });
+    });
+    //获取评论者
+    node.onDirective('获取评论者',function(node,directive,response){
+        console.log(`[--dir--]:${getCurrTime()}>>${directive.name}(${directive.ctx.params.join(',')}）`);
+        const scraper = createScraper(node);
+        scraper.getAllComments().then((comments)=>{
+            let commenters = comments.reduce((acc,cur)=>{
+                //page,videotime,videourl,name,fburl
+                acc[cur[5]] = [cur[0],cur[1],cur[2],cur[4],cur[5]];
+                return acc;
+            },{});
+            console.log(commenters);
+            response.send({status:'ok',msg:``,data:Object.values(commenters)})
         });
     });
 
