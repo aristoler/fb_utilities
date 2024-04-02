@@ -202,7 +202,7 @@ function appendRobotBtn(){
 
 //https://www.facebook.com/100093579038987/videos/
 //https://www.facebook.com/zycfc/videos/
-var liveprefix = 'https://www.facebook.com/100093579038987/videos/';
+var liveprefix = 'https://www.facebook.com/zycfc/videos/';
 var isLiving = false;
 function isOnLivePage(){//div[role='dialog']
         if(0==window.location.href.search(liveprefix)
@@ -212,8 +212,8 @@ function isOnLivePage(){//div[role='dialog']
             isLiving = true;
             return true;
         }else{
-            isLiving = true;
-            return true;
+            isLiving = false;
+            return false;
         }
 }
 function isRobotExist(){
@@ -515,14 +515,15 @@ function commentCb(dom){
 function liveStatusMonitor(){
     postRequest("https://zhenyoucui.com/zhenserver?api=getlivestatus",{video_id:window.location.href.split('/').pop()})
     .then(ret=>{
-        if(ret.status == 'stopped'){
+        if(ret.status == 'stopped'
+           && isLiving == true){
             postText('今日直播已结束，晚安好夢🌃❤~');
             isLiving = false;
-        }else{
-            setTimeout(liveStatusMonitor,1*60*1000);
         }
     });
-
+    if(isLiving){
+        setTimeout(liveStatusMonitor,1*60*1000);
+    }
 }
 
 function startMonitor(){
