@@ -655,7 +655,7 @@ function createNode(role,fbid){
             return new Promise((resolve,reject)=>{
                 console.log(`[--log--]:${getCurrTime()} ${node.role} id ${node.id} posting ?id=${node.fbid}&${uri}`);
                 if(node.pendingrequests.length> 5){
-                    window.focus(); //网络事件卡主，需要激活窗口. tamper应该用了setTimeout
+                    //window.focus(); //网络事件卡主，需要激活窗口. tamper应该用了setTimeout
                     node.pendingrequests = [];
                 }
                 node.pendingrequests.push(1);
@@ -1359,6 +1359,7 @@ function slave(node){
     node.onDirective('分享小组',function(node,directive,response){
         console.log(`[--dir--]:${getCurrTime()}>>${directive.name}(${directive.ctx.params.join(',')}）`);
         let groupname = directive.ctx.params[0];
+        let groupurl = directive.ctx.params[1];
                 //wait between publishs
         (function publishOneToGroup(){
                 //监听小组列表框
@@ -1366,7 +1367,7 @@ function slave(node){
             observeNode(document.querySelector("div[role='banner']").nextSibling.nextSibling,(dom,ishappened)=>{
                 var dialog = document.querySelector("div[role='dialog'] div[aria-label='分享到小组'");
                 var items = document.querySelectorAll("div[role='dialog'] div[role='list'] div[role='listitem'] div[role='button']");
-                var [group] = Array.from(items).filter(item=>item.querySelectorAll("span")[0].textContent == groupname);
+                var [group] = Array.from(items).filter(item=>item.querySelector("a").href.search(groupurl)>=0);
 				console.log('!!dialog&&!!group&&!isgroupfound&&!ishappened',!!dialog,!!group,!isgroupfound,!ishappened);
                 //var sendbtn = document.querySelector("div[role='dialog'] form div[aria-label='发布']");
                 if(!!dialog&&!!group&&!isgroupfound&&!ishappened){
@@ -1381,7 +1382,7 @@ function slave(node){
                         var closebtn = document.querySelector("div[role='dialog'] form div[aria-label='关闭']");
                         if(!!sendbtn&&!ishappened){
                             sendbtn.click();
-                            console.log(groupname);
+                            console.log(group.textContent);
                             //closebtn.click();
                             response.send({status:'ok',msg:``,data:[]});
                             return true;
