@@ -1570,7 +1570,7 @@ function slave(node){
         observeNode(menuelement,(dom,ishappened)=>{
                         if(dom.querySelectorAll("div[role=\"menu\"] a[role=\"menuitemradio\"]").length>0){
                            const [livebtn] = Array.from(dom.querySelectorAll("div[role=\"menu\"] a[role=\"menuitemradio\"]"))
-                           .filter(dom=>dom.textContent=="直播");
+                           .filter(d=>d.textContent.search("直播")>-1);
                            if(livebtn){
                                livebtn.click();
                                node.callMeLater(3000,()=>{response.send({status:'ok',msg:``});});//等加载
