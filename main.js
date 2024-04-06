@@ -193,6 +193,37 @@ function observeText(node,domcb,isonce){
     const observer = new MutationObserver(callback);
     observer.observe(node, config);
 }
+//超时计时器
+function TimeOutCounter(seconds) {
+	let counter = {};
+	counter.secs = seconds;
+	counter.promise = new Promise((res, rej) => {
+		counter.res = res;
+		counter.rej = rej;
+	});
+	//启动
+	counter.start = function(seconds){
+		counter.secs = seconds?seconds:counter.secs;
+		//start
+		console.log('counter start at',new Date().toISOString());
+		counter.timer = setTimeout(()=>{		
+			console.log('counter end at',new Date().toISOString());				
+			counter.res();			
+		},counter.secs*1000);
+		
+		return counter.promise;
+	}
+	//停止
+	counter.stop = function(){
+		clearTimeout(counter.timer);
+	}
+	//重启
+	counter.restart = function(seconds){
+		counter.stop();
+		return counter.start(seconds?seconds:counter.secs);
+	}
+	return counter;
+}
 function createNode(role,fbid){
 
     const namespace = 'zzyycc';
