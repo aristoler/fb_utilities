@@ -1591,7 +1591,7 @@ function slave(node){
     node.onDirective('进入直播列表',function(node,directive,response){
         console.log(`[--dir--]:${getCurrTime()}>>${directive.name}(${directive.ctx.params.join(',')}）`);
 
-        var menuelement = document.querySelector("div[role='main']").parentElement.parentElement.parentElement.children[1];
+        var menuelement = document.querySelector("div[role='main']").parentElement.parentElement.parentElement.parentElement.children[1];
         observeNode(menuelement,(dom,ishappened)=>{
                         if(dom.querySelectorAll("div[role=\"menu\"] a[role=\"menuitemradio\"]").length>0){
                            const [livebtn] = Array.from(dom.querySelectorAll("div[role=\"menu\"] a[role=\"menuitemradio\"]"))
