@@ -750,39 +750,33 @@ function createScraper(n){
     const node = n;
     //直播列表翻页
     scraper.showAllVideosPromise =(function(){
-        return function (maxNum,maxTries) {
-            return new Promise((resolve,reject)=>{
+        return function (maxNum) {
+		let counter = TimeOutCounter();		
+		function getMaxNumVideos (maxNum) {
+            		return new Promise((resolve,reject)=>{
                 //直播列表页翻到底
-                let counts = 0;
-                let checkN = maxTries;
-                node.callMeLater(3000,function scroll(){
-                    let scrollPages = 2+Math.random()*3;
-                    let delayRandom = 3+Math.random()*7;
-                    let parent = document.querySelector("a>img").parentElement.parentElement.parentElement.parentElement;
-                    if(parent.childNodes.length>counts){
-                        console.log(`new num ${parent.childNodes.length - counts}`);
-                        counts = parent.childNodes.length;
-                        checkN = maxTries;//reset checkN
-                        //next page
-                        if(counts<maxNum){
-                            //parent.childNodes[parent.childNodes.length-1].scrollIntoView();
-                            window.scrollBy(0,window.innerHeight*scrollPages);
-                            node.callMeLater(delayRandom*1000,scroll);
-                        }else{
-                            console.log(`exit at num ${counts}`);
-                            resolve(counts);
-                        }
-                    }else if(checkN-->0){
-                        console.log(`seem max at ${counts}`);
-                        window.scrollBy(0,window.innerHeight*scrollPages);
-                        node.callMeLater(delayRandom*1000,scroll);
-                    }
-                    else{
-                        console.log(`total num ${counts}`);
-                        resolve(counts);
-                    }
-                });
-            })//end of promise
+				let parent = document.querySelector("a>img").parentElement.parentElement.parentElement.parentElement;
+				observeNode(parent,(dom,ishappened)=>{
+							if(Array.from(document.querySelectorAll("a>img")).length>=maxNum){
+								console.log('get max num videos',maxNum);
+								resolve();
+								return true;
+							}
+							//重计时10s
+							counter.restart(10);
+							//翻页
+							Array.from(document.querySelectorAll("a>img")).pop().scrollIntoView();
+							return ishappened;
+				},true);
+				//滚动一下
+				Array.from(document.querySelectorAll("a>img")).pop().scrollIntoView();
+	            	})//end of promise
+        	}
+		//whichever first
+		return Promise.race([getMaxNumVideos(maxNum), counter.start(10)]).then(()=>{
+			counter.stop();
+			console.log(`total ${Array.from(document.querySelectorAll("a>img")).length} videos`); 
+	      	);
         }
     })();
     //获取直播列表信息
@@ -1619,7 +1613,7 @@ function slave(node){
         const maxNum = Number(directive.ctx.params[0]);
         const maxTries = Number(directive.ctx.params[1]);
         const scraper = createScraper(node);
-        scraper.showAllVideosPromise(maxNum,maxTries).then((nums)=>{
+        scraper.showAllVideosPromise(maxNum).then(()=>{
             const videos = scraper.getAllVideos();
             // console.log(videos);
             response.send({status:'ok',msg:``,data:videos})
