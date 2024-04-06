@@ -205,7 +205,7 @@ function TimeOutCounter(seconds) {
 	counter.start = function(seconds){
 		counter.secs = seconds?seconds:counter.secs;
 		//start
-		console.log('counter start at',new Date().toISOString());
+		//console.log('counter start at',new Date().toISOString());
 		counter.timer = setTimeout(()=>{
 			console.log('counter end at',new Date().toISOString());
 			counter.res();
