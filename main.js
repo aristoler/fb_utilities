@@ -206,11 +206,11 @@ function TimeOutCounter(seconds) {
 		counter.secs = seconds?seconds:counter.secs;
 		//start
 		console.log('counter start at',new Date().toISOString());
-		counter.timer = setTimeout(()=>{		
-			console.log('counter end at',new Date().toISOString());				
-			counter.res();			
+		counter.timer = setTimeout(()=>{
+			console.log('counter end at',new Date().toISOString());
+			counter.res();
 		},counter.secs*1000);
-		
+
 		return counter.promise;
 	}
 	//停止
@@ -750,33 +750,34 @@ function createScraper(n){
     const node = n;
     //直播列表翻页
     scraper.showAllVideosPromise =(function(){
-	return function (maxNum) {
-		let counter = TimeOutCounter();		
-		function getMaxNumVideos (maxNum) {
-			return new Promise((resolve,reject)=>{
-				//直播列表页翻到底
-				let parent = document.querySelector("a>img").parentElement.parentElement.parentElement.parentElement;
-				observeNode(parent,(dom,ishappened)=>{
-							if(Array.from(document.querySelectorAll("a>img")).length>=maxNum){
-								console.log('get max num videos',maxNum);
-								resolve();
-								return true;
-							}
-							//重计时10s
-							counter.restart(10);
-							//翻页
-							Array.from(document.querySelectorAll("a>img")).pop().scrollIntoView();
-							return ishappened;
-				},true);
-			//滚动一下
-			Array.from(document.querySelectorAll("a>img")).pop().scrollIntoView();
-				})//end of promise
-		}
-		//whichever first
-		return Promise.race([getMaxNumVideos(maxNum), counter.start(10)]).then(()=>{
-			counter.stop();
-			console.log(`total ${Array.from(document.querySelectorAll("a>img")).length} videos`); 
-		});
+        return function (maxNum) {
+            let counter = TimeOutCounter();
+            function getMaxNumVideos (maxNum) {
+                return new Promise((resolve,reject)=>{
+                    //直播列表页翻到底
+                    let parent = document.querySelector("a>img").parentElement.parentElement.parentElement.parentElement;
+                    observeNode(parent,(dom,ishappened)=>{
+                        if(Array.from(document.querySelectorAll("a>img")).length>=maxNum){
+                            console.log('get max num videos',maxNum);
+                            resolve();
+                            return true;
+                        }
+                        //重计时10s
+                        counter.restart(10);
+                        //翻页
+                        Array.from(document.querySelectorAll("a>img")).pop().scrollIntoView();
+                        return ishappened;
+                    },true);
+                    //滚动一下
+                    Array.from(document.querySelectorAll("a>img")).pop().scrollIntoView();
+                })//end of promise
+            }
+            //whichever first
+            return Promise.race([getMaxNumVideos(maxNum), counter.start(10)]).then(()=>{
+                counter.stop();
+                console.log(`total ${Array.from(document.querySelectorAll("a>img")).length} videos`);
+            });
+        }
     })();
     //获取直播列表信息
     scraper.getAllVideos = (()=>{
