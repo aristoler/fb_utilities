@@ -1390,7 +1390,7 @@ function slave(node){
                 //监听小组列表框
             var isgroupfound = false;
             observeNode(document.querySelector("div[role='banner']").nextSibling.nextSibling,(dom,ishappened)=>{
-                var dialog = document.querySelector("div[role='dialog'] div[aria-label='分享到小组'");
+                var dialog = Array.from(dom.querySelectorAll("h2 span>span")).filter(a=>a.textContent == '分享到小组');
                 var items = document.querySelectorAll("div[role='dialog'] div[role='list'] div[role='listitem'] div[role='button']");
                 var [group] = Array.from(items).filter(item=>item.querySelector("a").href.search(groupurl)>=0);
 				console.log('!!dialog&&!!group&&!isgroupfound&&!ishappened',!!dialog,!!group,!isgroupfound,!ishappened);
@@ -1426,17 +1426,13 @@ function slave(node){
             },true);
 
             //监听分享小组选项
-            observeNode(document.querySelector("div[role='banner']").nextSibling,(dom,ishappened)=>{
-                var [morebtn] = Array.from(dom.querySelectorAll("div[aria-label='分享选项'] div[role='button']")).filter(a=>a.textContent == '更多选项');
-                var [groupbtn] = Array.from(dom.querySelectorAll("div[aria-label='分享选项'] div[role='button']")).filter(a=>a.textContent == '分享到小组');
+            observeNode(document.querySelector("div[role='banner']").nextSibling.nextSibling,(dom,ishappened)=>{
+                var [groupbtn] = Array.from(dom.querySelectorAll("div[role='button'] span>span")).filter(a=>a.textContent == '小组');
                 if(!!groupbtn){
                     //分享到小组
                     console.log('click sharetogroup btn');
                     groupbtn.click();
                     return true;
-                }else if(!!morebtn){//展开选项
-                    console.log('click more btn');
-                    morebtn.click();
                 }
                 return ishappened;
             },true);
