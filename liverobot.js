@@ -382,6 +382,7 @@ String.prototype.populate = function(params) {
 var userRequested = {};
 function userReact(dom,fbid,name){
     var promises = [];
+    let hello = (new Date()).getHours() >= 18 ? '晚安' : ((new Date()).getHours() >= 12 ? '午安' : '早安');
     for(let user of users){
         var names = user.names.populate(allusers);
         var datestring = getTodayString();
@@ -398,7 +399,7 @@ function userReact(dom,fbid,name){
                         return myCache.get(key).then((ret)=>{
                             if(!ret.data){
                                 myCache.set(ret.key,new Date().getTime().toString());
-                                putCmtInPipe(user.cmt.populate(Object.assign({name}, allusers.all[name])));
+                                putCmtInPipe(user.cmt.populate(Object.assign({name,hello}, allusers.all[name])));
                             }else{
                                 console.log(user.purpose,name,'already sent');
                             }
